@@ -16,7 +16,7 @@ import {
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/sessions', label: 'Sessions', icon: Layers },
+  { href: '/sessions', label: 'Topics', icon: Layers },
   { href: '/coach-prompt', label: 'Coach Prompt', icon: MessageSquareQuote },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];

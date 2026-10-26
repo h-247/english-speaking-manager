@@ -163,13 +163,13 @@ export function SessionFormDialog({
           failCount: parsedFail,
           practicedAt: isoPracticed,
         });
-        showSuccess(`Added new speaking session "${topic.trim()}".`);
+        showSuccess(`Added new speaking topic "${topic.trim()}".`);
       }
 
       onSuccess();
       onClose();
     } catch (err: any) {
-      showError(err.message || 'Failed to save session.');
+      showError(err.message || 'Failed to save topic.');
     } finally {
       setIsLoading(false);
     }
@@ -179,7 +179,7 @@ export function SessionFormDialog({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title={isEditing ? 'Edit Speaking Session' : 'Add Speaking Session'}
+      title={isEditing ? 'Edit Speaking Session / Topic' : 'Add Speaking Session / Topic'}
       description={
         isEditing
           ? 'Update topic details, ChatGPT link, or practice notes.'
@@ -302,7 +302,7 @@ export function SessionFormDialog({
             Cancel
           </Button>
           <Button variant="primary" size="sm" type="submit" isLoading={isLoading}>
-            {isEditing ? 'Save Changes' : 'Create Session'}
+            {isEditing ? 'Save Changes' : 'Create Topic / Session'}
           </Button>
         </div>
       </form>

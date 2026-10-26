@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -37,6 +38,7 @@ import {
   Layers,
   ArrowRight,
   FolderPlus,
+  Search,
 } from 'lucide-react';
 
 export interface TopicLinkManagerProps {
@@ -123,6 +125,35 @@ export function TopicLinkManager({
     }
     return combinedTopics[0]?.name || 'Job & Study';
   });
+
+  // Track sessions length to automatically select newly added topic
+  const prevSessionsLength = React.useRef(sessions.length);
+  useEffect(() => {
+    if (sessions.length > prevSessionsLength.current && sessions[0]) {
+      setSelectedTopicName(sessions[0].topic);
+    }
+    prevSessionsLength.current = sessions.length;
+  }, [sessions]);
+
+  useEffect(() => {
+    if (initialSelectedTopic) {
+      setSelectedTopicName(initialSelectedTopic);
+    }
+  }, [initialSelectedTopic]);
+
+  // Search filter for topics list
+  const [searchTopic, setSearchTopic] = useState('');
+
+  // Filtered topics based on search
+  const filteredTopics = useMemo(() => {
+    if (!searchTopic.trim()) return combinedTopics;
+    const q = searchTopic.toLowerCase();
+    return combinedTopics.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q),
+    );
+  }, [combinedTopics, searchTopic]);
 
   // Detailed selected session state (with attempts and groupedLinks)
   const [detailedSession, setDetailedSession] = useState<SessionItem | null>(null);
@@ -329,21 +360,34 @@ export function TopicLinkManager({
             </p>
           </div>
 
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onOpenAddSession()}
-            className="text-xs font-semibold shrink-0"
-          >
-            <FolderPlus className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
-            + Custom Topic
-          </Button>
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-56">
+              <input
+                type="text"
+                value={searchTopic}
+                onChange={(e) => setSearchTopic(e.target.value)}
+                placeholder="Search by topic..."
+                className="w-full bg-[#1c1c1c] border border-[#383838] focus:border-white focus:ring-1 focus:ring-white rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#ececec] placeholder-gray-500 outline-none transition-colors"
+              />
+              <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            </div>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onOpenAddSession()}
+              className="text-xs font-semibold shrink-0"
+            >
+              <FolderPlus className="w-3.5 h-3.5 mr-1.5 text-gray-400" />
+              + Custom Topic
+            </Button>
+          </div>
         </div>
 
         {/* Horizontal Scrollable / Wrapping Topic Pills */}
         <div className="pt-3">
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-neutral-700">
-            {combinedTopics.map((topic) => {
+            {filteredTopics.map((topic) => {
               const isSelected =
                 topic.name.toLowerCase() === selectedTopicName.toLowerCase();
               const hasSession = Boolean(topic.session);
@@ -353,40 +397,42 @@ export function TopicLinkManager({
               const score = topic.session?.score;
 
               return (
-                <button
-                  key={topic.name}
-                  onClick={() => {
-                    setSelectedTopicName(topic.name);
-                    setUrlError('');
-                    setNewLinkUrl('');
-                  }}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all shrink-0 border select-none ${
-                    isSelected
-                      ? 'bg-[#333333] text-white border-white/40 shadow-sm ring-1 ring-white/20'
-                      : 'bg-[#1e1e1e] text-gray-300 border-[#333333] hover:bg-[#2a2a2a] hover:text-white hover:border-[#444444]'
-                  }`}
-                >
-                  <span className="text-sm">{topic.icon}</span>
-                  <span className="font-semibold">{topic.name}</span>
+                <div key={topic.name} className="shrink-0 flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTopicName(topic.name);
+                      setUrlError('');
+                      setNewLinkUrl('');
+                    }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all shrink-0 border select-none ${
+                      isSelected
+                        ? 'bg-[#333333] text-white border-white/40 shadow-sm ring-1 ring-white/20'
+                        : 'bg-[#1e1e1e] text-gray-300 border-[#333333] hover:bg-[#2a2a2a] hover:text-white hover:border-[#444444]'
+                    }`}
+                  >
+                    <span className="text-sm">{topic.icon}</span>
+                    <span className="font-semibold">{topic.name}</span>
 
-                  {hasSession ? (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-                        score !== null && score !== undefined
-                          ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
-                          : 'bg-[#2a2a2a] text-gray-300'
-                      }`}
-                    >
-                      {score !== null && score !== undefined
-                        ? `${score.toFixed(1)}/10`
-                        : `${linkCount} link${linkCount > 1 ? 's' : ''}`}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-gray-500 font-normal">
-                      + Add
-                    </span>
-                  )}
-                </button>
+                    {hasSession ? (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+                          score !== null && score !== undefined
+                            ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
+                            : 'bg-[#2a2a2a] text-gray-300'
+                        }`}
+                      >
+                        {score !== null && score !== undefined
+                          ? `${score.toFixed(1)}/10`
+                          : `${linkCount} link${linkCount > 1 ? 's' : ''}`}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-500 font-normal">
+                        + Add
+                      </span>
+                    )}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -406,7 +452,17 @@ export function TopicLinkManager({
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                      {activeTopic.name}
+                      {activeSession ? (
+                        <Link
+                          href={`/sessions/${activeSession.id}`}
+                          className="hover:underline hover:text-blue-300 transition-colors"
+                          title="View topic details"
+                        >
+                          {activeTopic.name}
+                        </Link>
+                      ) : (
+                        activeTopic.name
+                      )}
                     </h3>
                     {activeSession ? (
                       <StatusBadge status={activeSession.status} />
@@ -444,6 +500,7 @@ export function TopicLinkManager({
                     variant="primary"
                     size="sm"
                     onClick={() => onRecordResult(activeSession)}
+                    title="Record Pass/Fail results"
                     className="text-xs"
                   >
                     <Award className="w-3.5 h-3.5 mr-1.5 text-yellow-500" />

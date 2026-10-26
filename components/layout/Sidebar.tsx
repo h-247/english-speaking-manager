@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   },
   {
     href: '/sessions',
-    label: 'Sessions',
+    label: 'Topics',
     icon: Layers,
   },
   {

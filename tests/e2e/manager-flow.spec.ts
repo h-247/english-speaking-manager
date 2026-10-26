@@ -20,7 +20,7 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     // Verify prompt copy and ChatGPT actions
     await expect(page.getByRole('button', { name: /Copy Prompt/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Open ChatGPT/i }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /Add Session/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Add (Session|Topic)/i })).toBeVisible();
   });
 
   test('2. Coach Prompt page displays full original prompt and allows copying', async ({ page }) => {
@@ -49,27 +49,27 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     const testTopic = `Public Speaking Mastery ${Date.now()}`;
     const testUrl = `https://chatgpt.com/c/test-${Date.now()}`;
 
-    // 1. Open Sessions Library
+    // 1. Open Topics Library
     await page.goto('/sessions');
     await expect(
-      page.getByRole('heading', { name: /Sessions Library/i }),
+      page.getByRole('heading', { name: /(Sessions|Topics)/i }).first(),
     ).toBeVisible({ timeout: 20000 });
 
     // Wait for initial sessions fetch to settle
     await page.waitForLoadState('networkidle');
 
-    // 2. Click Add Session
-    const addBtn = page.getByRole('button', { name: /Add Session/i }).first();
+    // 2. Click Add Topic/Session
+    const addBtn = page.getByRole('button', { name: /Add (Session|Topic)/i }).first();
     await expect(addBtn).toBeVisible();
     await addBtn.click();
     await expect(
-      page.getByRole('heading', { name: /Add Speaking Session/i }),
+      page.getByRole('heading', { name: /Add Speaking (Session|Topic)/i }),
     ).toBeVisible({ timeout: 5000 });
 
     // 3. Fill form
     await page.getByLabel(/^Topic/i).fill(testTopic);
     await page.getByLabel(/ChatGPT Conversation URL/i).fill(testUrl);
-    await page.getByRole('button', { name: /Create Session/i }).click();
+    await page.getByRole('button', { name: /Create (Session|Topic)/i }).click();
 
     // 4. Verify session appears in library
     await expect(page.getByText(testTopic).first()).toBeVisible({ timeout: 10000 });
@@ -80,10 +80,10 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await expect(page.getByText(testTopic).first()).toBeVisible({ timeout: 10000 });
 
     // 6. Test duplicate prevention
-    await page.getByRole('button', { name: /Add Session/i }).first().click();
+    await page.getByRole('button', { name: /Add (Session|Topic)/i }).first().click();
     await page.getByLabel(/^Topic/i).fill('Duplicate Attempt');
     await page.getByLabel(/ChatGPT Conversation URL/i).fill(testUrl);
-    await page.getByRole('button', { name: /Create Session/i }).click();
+    await page.getByRole('button', { name: /Create (Session|Topic)/i }).click();
     // Expect error toast
     await expect(page.getByText(/already exists/i)).toBeVisible({ timeout: 5000 });
     // Close modal
@@ -110,7 +110,7 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
       await expect(page.getByText('8.0/10')).toBeVisible();
 
       await page.getByRole('button', { name: /Save Results/i }).click();
-      await expect(page.getByText(/Recorded practice results/i)).toBeVisible({
+      await expect(page.getByText(/Recorded practice results/i).first()).toBeVisible({
         timeout: 5000,
       });
     }
@@ -120,7 +120,7 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     if (await deleteBtn.isVisible()) {
       await deleteBtn.click();
       await expect(
-        page.getByRole('heading', { name: /Delete Session Record/i }),
+        page.getByRole('heading', { name: /Delete (Session|Topic)/i }),
       ).toBeVisible();
 
       // Test cancel first
@@ -129,8 +129,8 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
 
       // Now confirm delete
       await deleteBtn.click();
-      await page.getByRole('button', { name: /Delete Session/i }).last().click();
-      await expect(page.getByText(/Deleted session/i)).toBeVisible({ timeout: 5000 });
+      await page.getByRole('button', { name: /Delete (Session|Topic)/i }).last().click();
+      await expect(page.getByText(/Deleted/i)).toBeVisible({ timeout: 5000 });
     }
   });
 
@@ -146,7 +146,7 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     // Open drawer
     await toggleBtn.click();
     await expect(page.getByRole('link', { name: /Coach Prompt/i }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: /Sessions/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /(Sessions|Topics)/i }).first()).toBeVisible();
   });
 
   test('5. Multi-attempt practice tracking and score progression for ChatGPT link', async ({ page }) => {
@@ -156,10 +156,10 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     // 1. Create a session
     await page.goto('/sessions');
     await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: /Add Session/i }).first().click();
+    await page.getByRole('button', { name: /Add (Session|Topic)/i }).first().click();
     await page.getByLabel(/^Topic/i).fill(testTopic);
     await page.getByLabel(/ChatGPT Conversation URL/i).fill(testUrl);
-    await page.getByRole('button', { name: /Create Session/i }).click();
+    await page.getByRole('button', { name: /Create (Session|Topic)/i }).click();
 
     // 2. Open session details
     const sessionLink = page.getByRole('link', { name: testTopic }).first();

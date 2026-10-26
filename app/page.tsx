@@ -130,7 +130,7 @@ export default function DashboardPage() {
 
           <Button variant="primary" size="sm" onClick={() => setIsAddOpen(true)}>
             <Plus className="w-4 h-4" />
-            Add Session
+            Add Topic
           </Button>
         </div>
       </div>
@@ -138,7 +138,7 @@ export default function DashboardPage() {
       {/* Summary Statistics Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatsCard
-          label="Total Sessions"
+          label="Total Topics"
           value={data?.totalSessions ?? 0}
           icon={<Layers className="w-4 h-4" />}
           accentColor="default"
@@ -215,21 +215,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick Access: Unfinished Practice Sessions */}
+      {/* Quick Access: Active Practice Topics */}
       {data?.unfinishedSessions && data.unfinishedSessions.length > 0 && (
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
               <h2 className="text-lg font-bold text-[#ececec]">
-                Quick Access: Unfinished Sessions
+                Quick Access: Active Topics
               </h2>
             </div>
             <Link
-              href="/sessions?status=IN_PROGRESS"
+              href="/sessions"
               className="text-xs font-medium text-gray-400 hover:text-white flex items-center gap-1"
             >
-              Filter in Library <ArrowRight className="w-3.5 h-3.5" />
+              View Topics <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
@@ -248,16 +248,16 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* Recent Sessions or Empty State */}
+      {/* Recent Topics or Empty State */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-[#ececec]">Recent Speaking Sessions</h2>
+          <h2 className="text-lg font-bold text-[#ececec]">Recent Speaking Topics</h2>
           {hasSessions && (
             <Link
               href="/sessions"
               className="text-xs font-semibold text-gray-300 hover:text-white flex items-center gap-1.5"
             >
-              View All Sessions <ArrowRight className="w-3.5 h-3.5" />
+              View All Topics <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           )}
         </div>
@@ -278,9 +278,9 @@ export default function DashboardPage() {
         ) : (
           <EmptyState
             icon={<BookOpen className="w-8 h-8" />}
-            title="No Speaking Sessions Yet"
+            title="No Speaking Topics Yet"
             description="Start practicing by copying the coach prompt, generating a 5-minute B2 presentation in ChatGPT, and saving your conversation link here."
-            actionLabel="Add Your First Session"
+            actionLabel="Add Your First Topic"
             onAction={() => setIsAddOpen(true)}
             actionIcon={<Plus className="w-4 h-4 mr-1.5" />}
           />
