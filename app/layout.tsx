@@ -15,8 +15,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-[#212121] text-[#ececec] antialiased">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className="bg-[#212121] text-[#ececec] antialiased" suppressHydrationWarning>
         <ToastProvider>
           <AppShell>{children}</AppShell>
         </ToastProvider>
