@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/Select';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { calculateScore, formatScore } from '@/lib/scoring';
 import { createSession, updateSession, SessionItem } from '@/lib/api-client';
+import { PRESET_TOPICS } from '@/lib/preset-topics';
 import { useToast } from '@/components/ui/Toast';
 
 export interface SessionFormDialogProps {
@@ -188,22 +189,54 @@ export function SessionFormDialog({
       maxWidth="lg"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Input
-          label="Topic"
-          required
-          placeholder="e.g. Overcoming Fear of Public Speaking"
-          value={topic}
-          onChange={(e) => {
-            setTopic(e.target.value);
-            setErrors((prev) => {
-              const copy = { ...prev };
-              delete copy.topic;
-              return copy;
-            });
-          }}
-          error={errors.topic}
-          helperText="The subject or presentation title for your speaking practice"
-        />
+        <div className="space-y-2">
+          <div>
+            <label htmlFor="topic-select" className="block text-xs font-medium text-gray-300 mb-1">
+              Choose Preset Topic (Optional Selection)
+            </label>
+            <select
+              id="topic-select"
+              aria-label="Choose Preset Topic"
+              value={PRESET_TOPICS.some((p) => p.name.toLowerCase() === topic.toLowerCase()) ? topic : 'custom'}
+              onChange={(e) => {
+                if (e.target.value !== 'custom') {
+                  setTopic(e.target.value);
+                  setErrors((prev) => {
+                    const copy = { ...prev };
+                    delete copy.topic;
+                    return copy;
+                  });
+                }
+              }}
+              className="w-full bg-[#1a1a1a] border border-[#383838] focus:border-white focus:ring-1 focus:ring-white rounded-lg px-3 py-2 text-sm text-[#ececec] outline-none transition-colors"
+            >
+              <option value="custom">-- Choose standard topic or enter custom below --</option>
+              {PRESET_TOPICS.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.icon} {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <Input
+            id="topic"
+            label="Topic"
+            required
+            placeholder="e.g. Job & Study, Accommodation & Buildings..."
+            value={topic}
+            onChange={(e) => {
+              setTopic(e.target.value);
+              setErrors((prev) => {
+                const copy = { ...prev };
+                delete copy.topic;
+                return copy;
+              });
+            }}
+            error={errors.topic}
+            helperText="The topic selection for this ChatGPT speaking session"
+          />
+        </div>
 
         <Input
           label="ChatGPT Conversation URL"
