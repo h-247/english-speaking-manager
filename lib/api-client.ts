@@ -3,6 +3,7 @@ import {
   UpdateSessionInput,
   RecordResultInput,
   CreateAttemptInput,
+  UpdateAttemptInput,
   ImportPayload,
 } from '@/lib/validation';
 
@@ -191,6 +192,27 @@ export async function addAttempt(
     throw new Error(err.error || 'Failed to add practice attempt');
   }
   return res.json();
+}
+
+export async function updateAttempt(
+  sessionId: string,
+  attemptId: string,
+  data: UpdateAttemptInput,
+): Promise<PracticeAttemptItem> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/attempts/${encodeURIComponent(attemptId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    },
+  );
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update practice attempt');
+  }
+  const result = (await res.json()) as { success: boolean; attempt: PracticeAttemptItem };
+  return result.attempt;
 }
 
 export async function deleteAttempt(

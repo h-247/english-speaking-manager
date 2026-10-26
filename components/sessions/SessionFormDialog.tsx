@@ -179,7 +179,7 @@ export function SessionFormDialog({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title={isEditing ? 'Edit Speaking Session / Topic' : 'Add Speaking Session / Topic'}
+      title={isEditing ? 'Edit Topic' : 'Add Speaking Session / Topic'}
       description={
         isEditing
           ? 'Update topic details, ChatGPT link, or practice notes.'

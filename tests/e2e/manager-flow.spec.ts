@@ -280,4 +280,77 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     // Verify 8.4/10 score recorded on this link
     await expect(page.getByText('8.4/10').first()).toBeVisible();
   });
+
+  test('7. Dedicated Topics CRUD page and editing ChatGPT link for attempts', async ({ page }) => {
+    const topicName = `Climate & Nature ${Date.now()}`;
+    const initialUrl = `https://chatgpt.com/c/climate-chat-${Date.now()}`;
+    const editedUrl = `https://chatgpt.com/c/climate-edited-${Date.now()}`;
+
+    // 1. Visit dedicated /topics CRUD page
+    await page.goto('/topics');
+    await page.waitForLoadState('networkidle');
+
+    await expect(
+      page.getByRole('heading', { name: /Speaking Topics & Links/i }),
+    ).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Topics Overview \(CRUD\)/i)).toBeVisible();
+
+    // 2. Add topic from CRUD page
+    await page.getByRole('button', { name: /Add (Session|Topic)/i }).first().click();
+    await page.getByLabel(/^Topic/i).fill(topicName);
+    await page.getByLabel(/ChatGPT Conversation URL/i).fill(initialUrl);
+    await page.getByRole('button', { name: /Create (Session|Topic)/i }).click();
+
+    // Verify topic appears in CRUD table
+    await expect(page.getByText(topicName).first()).toBeVisible({ timeout: 10000 });
+
+    // 3. Edit topic from CRUD table
+    const topicRow = page.locator('tr', { hasText: topicName });
+    await topicRow.getByRole('button', { name: /Edit/i }).click();
+    await expect(page.getByRole('heading', { name: /Edit (Session|Topic)/i })).toBeVisible();
+    await page.getByLabel(/Notes/i).fill('Exploring environmental policies in English');
+    await page.getByRole('button', { name: /Save Changes/i }).click();
+    await expect(page.getByText('Exploring environmental policies in English')).toBeVisible();
+
+    // 4. Practice and log an attempt
+    await topicRow.getByRole('button', { name: /Practice/i }).click();
+    // Switched to workspace tab
+    await expect(page.getByText(/Add ChatGPT Link to/i)).toBeVisible();
+
+    const practiceBtn = page.locator('button:has-text("Practice Here")').first();
+    await practiceBtn.click();
+    await expect(page.getByRole('heading', { name: /Record Practice Results/i })).toBeVisible();
+    await page.getByLabel(/Pass Count/i).fill('40');
+    await page.getByLabel(/Fail Count/i).fill('10');
+    await page.getByRole('button', { name: /Save Results/i }).click();
+
+    await expect(page.getByText('8.0/10').first()).toBeVisible({ timeout: 10000 });
+
+    // 5. Edit the practice attempt & change its ChatGPT link
+    const editAttemptBtn = page.locator('button[title="Edit attempt and ChatGPT link"]').first();
+    await expect(editAttemptBtn).toBeVisible();
+    await editAttemptBtn.click();
+
+    await expect(
+      page.getByRole('heading', { name: /Edit Practice Attempt & ChatGPT Link/i }),
+    ).toBeVisible();
+    // Update counters to 45P / 5F -> 9.0/10
+    await page.locator('#editPassCount').fill('45');
+    await page.locator('#editFailCount').fill('5');
+    // Change ChatGPT link
+    await page.locator('#editChatgptUrl').fill(editedUrl);
+    await page.getByRole('button', { name: /Save Changes/i }).click();
+
+    // Verify updated score and updated URL
+    await expect(page.getByText(/Practice attempt updated/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('9.0/10').first()).toBeVisible();
+    await expect(page.getByText(editedUrl).first()).toBeVisible();
+
+    // 6. Return to CRUD table and delete topic
+    await page.getByRole('button', { name: /Topics Overview \(CRUD\)/i }).click();
+    const rowToDelete = page.locator('tr', { hasText: topicName });
+    await rowToDelete.getByRole('button', { name: /Delete/i }).click();
+    await page.getByRole('button', { name: /^Delete Topic$/i }).click();
+    await expect(page.locator('tr', { hasText: topicName })).not.toBeVisible();
+  });
 });

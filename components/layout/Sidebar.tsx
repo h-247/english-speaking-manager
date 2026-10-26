@@ -19,7 +19,7 @@ const NAV_ITEMS = [
     icon: LayoutDashboard,
   },
   {
-    href: '/sessions',
+    href: '/topics',
     label: 'Topics',
     icon: Layers,
   },
@@ -62,7 +62,9 @@ export function Sidebar() {
           const isActive =
             item.href === '/'
               ? pathname === '/'
-              : pathname.startsWith(item.href);
+              : item.href === '/topics'
+                ? pathname.startsWith('/topics') || pathname.startsWith('/sessions')
+                : pathname.startsWith(item.href);
           const Icon = item.icon;
 
           return (

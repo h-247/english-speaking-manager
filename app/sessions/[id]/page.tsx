@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
 import { SessionFormDialog } from '@/components/sessions/SessionFormDialog';
 import { RecordResultDialog } from '@/components/sessions/RecordResultDialog';
+import { EditAttemptDialog } from '@/components/sessions/EditAttemptDialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -18,6 +19,7 @@ import {
   deleteAttempt,
   addTopicLink,
   SessionItem,
+  PracticeAttemptItem,
 } from '@/lib/api-client';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { formatDate } from '@/lib/format-date';
@@ -65,6 +67,9 @@ export default function SessionDetailsPage({
   // Attempt deletion states
   const [attemptToDelete, setAttemptToDelete] = useState<string | null>(null);
   const [isDeletingAttempt, setIsDeletingAttempt] = useState(false);
+
+  // Attempt editing states
+  const [attemptToEdit, setAttemptToEdit] = useState<PracticeAttemptItem | null>(null);
 
   // Topic link management states
   const [selectedUrlForAttempt, setSelectedUrlForAttempt] = useState<string | undefined>(undefined);
@@ -591,8 +596,16 @@ export default function SessionDetailsPage({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <ScoreDisplay score={attempt.score} size="md" />
+                      <button
+                        onClick={() => setAttemptToEdit(attempt)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                        title="Edit practice attempt and ChatGPT link"
+                        aria-label="Edit practice attempt and ChatGPT link"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => setAttemptToDelete(attempt.id)}
                         className="p-1.5 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
@@ -770,6 +783,17 @@ export default function SessionDetailsPage({
         title="Delete Practice Attempt"
         message="Are you sure you want to delete this practice attempt? The session's latest score and stats will automatically adjust to the remaining attempts."
         confirmLabel="Delete Attempt"
+      />
+
+      {/* Edit Attempt Dialog */}
+      <EditAttemptDialog
+        isOpen={Boolean(attemptToEdit)}
+        onClose={() => setAttemptToEdit(null)}
+        sessionId={session.id}
+        attempt={attemptToEdit}
+        topicName={session.topic}
+        availableUrls={session.allChatgptUrls || [session.chatgptUrl]}
+        onSuccess={loadSession}
       />
     </div>
   );

@@ -226,7 +226,7 @@ export default function DashboardPage() {
               </h2>
             </div>
             <Link
-              href="/sessions"
+              href="/topics"
               className="text-xs font-medium text-gray-400 hover:text-white flex items-center gap-1"
             >
               View Topics <ArrowRight className="w-3.5 h-3.5" />
@@ -254,7 +254,7 @@ export default function DashboardPage() {
           <h2 className="text-lg font-bold text-[#ececec]">Recent Speaking Topics</h2>
           {hasSessions && (
             <Link
-              href="/sessions"
+              href="/topics"
               className="text-xs font-semibold text-gray-300 hover:text-white flex items-center gap-1.5"
             >
               View All Topics <ArrowRight className="w-3.5 h-3.5" />

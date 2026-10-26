@@ -14,6 +14,7 @@ import {
 } from '@/lib/preset-topics';
 import {
   SessionItem,
+  PracticeAttemptItem,
   createSession,
   addTopicLink,
   removeTopicLink,
@@ -22,6 +23,7 @@ import {
 } from '@/lib/api-client';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { formatDate } from '@/lib/format-date';
+import { EditAttemptDialog } from '@/components/sessions/EditAttemptDialog';
 import { useToast } from '@/components/ui/Toast';
 import {
   ExternalLink,
@@ -29,6 +31,7 @@ import {
   Check,
   Plus,
   Trash2,
+  Edit2,
   Link as LinkIcon,
   MessageSquare,
   Award,
@@ -170,6 +173,9 @@ export function TopicLinkManager({
   // Attempt deletion confirm states
   const [attemptToDelete, setAttemptToDelete] = useState<string | null>(null);
   const [isDeletingAttempt, setIsDeletingAttempt] = useState(false);
+
+  // Attempt editing states
+  const [attemptToEdit, setAttemptToEdit] = useState<PracticeAttemptItem | null>(null);
 
   // Copied link feedback
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
@@ -765,14 +771,24 @@ export function TopicLinkManager({
                                     </p>
                                   )}
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setAttemptToDelete(att.id)}
-                                  title="Delete this practice attempt"
-                                  className="text-gray-500 hover:text-red-400 p-1 rounded transition-colors"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setAttemptToEdit(att)}
+                                    title="Edit attempt and ChatGPT link"
+                                    className="text-gray-400 hover:text-white p-1 rounded transition-colors"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAttemptToDelete(att.id)}
+                                    title="Delete this practice attempt"
+                                    className="text-gray-500 hover:text-red-400 p-1 rounded transition-colors"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
@@ -847,14 +863,24 @@ export function TopicLinkManager({
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setAttemptToDelete(att.id)}
-                            title="Delete this practice attempt"
-                            className="text-gray-500 hover:text-red-400 p-1 rounded transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setAttemptToEdit(att)}
+                              title="Edit attempt and ChatGPT link"
+                              className="text-gray-400 hover:text-white p-1 rounded transition-colors"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAttemptToDelete(att.id)}
+                              title="Delete this practice attempt"
+                              className="text-gray-500 hover:text-red-400 p-1 rounded transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -886,6 +912,21 @@ export function TopicLinkManager({
         message="Are you sure you want to delete this practice attempt? The topic score will be updated to reflect the remaining attempts."
         confirmLabel="Delete Attempt"
       />
+
+      {activeSession && (
+        <EditAttemptDialog
+          isOpen={Boolean(attemptToEdit)}
+          onClose={() => setAttemptToEdit(null)}
+          sessionId={activeSession.id}
+          attempt={attemptToEdit}
+          topicName={activeTopic?.name}
+          availableUrls={linksToDisplay.map((l) => l.url)}
+          onSuccess={async () => {
+            await loadActiveDetails();
+            onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

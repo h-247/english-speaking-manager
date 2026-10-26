@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createAttemptSchema, sessionImportItemSchema } from '@/lib/validation';
+import { createAttemptSchema, updateAttemptSchema, sessionImportItemSchema } from '@/lib/validation';
 import { calculateScore, formatScore } from '@/lib/scoring';
 
 describe('createAttemptSchema', () => {
@@ -152,5 +152,38 @@ describe('Topic grouping of ChatGPT links and practice attempts', () => {
     expect(linkMap.get('https://chatgpt.com/c/main-chat')?.bestScore).toBe(8.0);
     expect(linkMap.get('https://chatgpt.com/c/branch-chat-1')?.attemptCount).toBe(2);
     expect(linkMap.get('https://chatgpt.com/c/branch-chat-1')?.bestScore).toBe(9.6);
+  });
+});
+
+describe('updateAttemptSchema', () => {
+  it('validates partial update of pass and fail counters', () => {
+    const res = updateAttemptSchema.safeParse({ passCount: 52, failCount: 4 });
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.passCount).toBe(52);
+      expect(res.data.failCount).toBe(4);
+    }
+  });
+
+  it('validates updating the ChatGPT URL for an attempt', () => {
+    const res = updateAttemptSchema.safeParse({
+      chatgptUrl: 'https://chatgpt.com/c/updated-chat-url',
+    });
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.chatgptUrl).toBe('https://chatgpt.com/c/updated-chat-url');
+    }
+  });
+
+  it('rejects invalid ChatGPT URL in attempt update', () => {
+    const res = updateAttemptSchema.safeParse({
+      chatgptUrl: 'https://invalid-host.com/c/fake-chat',
+    });
+    expect(res.success).toBe(false);
+  });
+
+  it('rejects negative numbers when updating counters', () => {
+    expect(updateAttemptSchema.safeParse({ passCount: -1 }).success).toBe(false);
+    expect(updateAttemptSchema.safeParse({ failCount: -2 }).success).toBe(false);
   });
 });

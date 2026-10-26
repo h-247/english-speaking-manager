@@ -143,11 +143,38 @@ export const createAttemptSchema = z.object({
     .string()
     .trim()
     .refine((url) => !url || validateChatGPTUrl(url).isValid, {
-      message: 'Branch link must be a valid HTTPS ChatGPT link.',
+      message: 'ChatGPT link must be a valid HTTPS ChatGPT link.',
     })
     .optional()
     .nullable(),
   markCompleted: z.boolean().optional().default(true),
+});
+
+export const updateAttemptSchema = z.object({
+  passCount: z
+    .number()
+    .int('Pass count must be a whole integer.')
+    .nonnegative('Pass count cannot be negative.')
+    .optional(),
+  failCount: z
+    .number()
+    .int('Fail count must be a whole integer.')
+    .nonnegative('Fail count cannot be negative.')
+    .optional(),
+  practicedAt: z
+    .string()
+    .datetime({ message: 'Practiced date must be a valid ISO 8601 timestamp.' })
+    .optional()
+    .nullable(),
+  notes: z.string().max(5000, 'Notes cannot exceed 5,000 characters.').optional().nullable(),
+  chatgptUrl: z
+    .string()
+    .trim()
+    .refine((url) => !url || validateChatGPTUrl(url).isValid, {
+      message: 'ChatGPT link must be a valid HTTPS ChatGPT link.',
+    })
+    .optional()
+    .nullable(),
 });
 
 export const practiceAttemptImportSchema = z.object({
@@ -190,4 +217,5 @@ export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 export type UpdateSessionInput = z.infer<typeof updateSessionSchema>;
 export type RecordResultInput = z.infer<typeof recordResultSchema>;
 export type CreateAttemptInput = z.infer<typeof createAttemptSchema>;
+export type UpdateAttemptInput = z.infer<typeof updateAttemptSchema>;
 export type ImportPayload = z.infer<typeof importPayloadSchema>;

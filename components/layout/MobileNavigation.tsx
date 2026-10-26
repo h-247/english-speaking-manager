@@ -16,7 +16,7 @@ import {
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/sessions', label: 'Topics', icon: Layers },
+  { href: '/topics', label: 'Topics', icon: Layers },
   { href: '/coach-prompt', label: 'Coach Prompt', icon: MessageSquareQuote },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -68,7 +68,9 @@ export function MobileNavigation() {
               const isActive =
                 item.href === '/'
                   ? pathname === '/'
-                  : pathname.startsWith(item.href);
+                  : item.href === '/topics'
+                    ? pathname.startsWith('/topics') || pathname.startsWith('/sessions')
+                    : pathname.startsWith(item.href);
               const Icon = item.icon;
 
               return (

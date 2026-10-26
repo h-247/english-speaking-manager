@@ -7,6 +7,7 @@ import {
   UpdateSessionInput,
   RecordResultInput,
   CreateAttemptInput,
+  UpdateAttemptInput,
   ImportPayload,
 } from '@/lib/validation';
 import { eq, and, desc, asc, like, or, sql, not } from 'drizzle-orm';
@@ -693,6 +694,144 @@ export class SessionService {
     }
 
     return { success: true };
+  }
+
+  /**
+   * Updates an existing practice attempt (including its ChatGPT link, counts, notes, date).
+   */
+  static async updateAttempt(
+    userId: string,
+    sessionId: string,
+    attemptId: string,
+    input: UpdateAttemptInput,
+  ) {
+    await ensureDatabaseInitialized();
+    const db = getDb();
+
+    const [existing] = await db
+      .select()
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.id, attemptId),
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      throw new Error('Practice attempt not found or access denied.');
+    }
+
+    const [session] = await db
+      .select()
+      .from(schema.practiceSessions)
+      .where(
+        and(
+          eq(schema.practiceSessions.userId, userId),
+          eq(schema.practiceSessions.id, sessionId),
+        ),
+      )
+      .limit(1);
+
+    if (!session) {
+      throw new Error('Session not found or access denied.');
+    }
+
+    const newPass = input.passCount !== undefined ? input.passCount : existing.passCount;
+    const newFail = input.failCount !== undefined ? input.failCount : existing.failCount;
+    const score = calculateScore(newPass, newFail);
+
+    const updates: Partial<typeof schema.practiceAttempts.$inferInsert> = {};
+    if (input.passCount !== undefined) updates.passCount = input.passCount;
+    if (input.failCount !== undefined) updates.failCount = input.failCount;
+    if (score !== null) updates.score = score;
+    if (input.practicedAt !== undefined) updates.practicedAt = input.practicedAt || existing.practicedAt;
+    if (input.notes !== undefined) updates.notes = input.notes?.trim() || null;
+
+    let attemptChatgptUrl = existing.chatgptUrl;
+    if (input.chatgptUrl !== undefined) {
+      attemptChatgptUrl = input.chatgptUrl?.trim() || session.chatgptUrl;
+      updates.chatgptUrl = attemptChatgptUrl;
+    }
+
+    await db
+      .update(schema.practiceAttempts)
+      .set(updates)
+      .where(
+        and(
+          eq(schema.practiceAttempts.id, attemptId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      );
+
+    // If a new ChatGPT URL was set, add it to the session's branchUrls if not already present
+    if (attemptChatgptUrl && attemptChatgptUrl !== session.chatgptUrl) {
+      let currentBranches: string[] = [];
+      if (session.branchUrls) {
+        try {
+          currentBranches = JSON.parse(session.branchUrls);
+        } catch {
+          currentBranches = [];
+        }
+      }
+      if (!currentBranches.includes(attemptChatgptUrl)) {
+        currentBranches.push(attemptChatgptUrl);
+        await db
+          .update(schema.practiceSessions)
+          .set({
+            branchUrls: JSON.stringify(currentBranches),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(
+            and(
+              eq(schema.practiceSessions.userId, userId),
+              eq(schema.practiceSessions.id, sessionId),
+            ),
+          );
+      }
+    }
+
+    // Check if this attempt is the latest one to update the parent session
+    const [latest] = await db
+      .select()
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      )
+      .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt))
+      .limit(1);
+
+    if (latest && latest.id === attemptId) {
+      const now = new Date().toISOString();
+      await db
+        .update(schema.practiceSessions)
+        .set({
+          passCount: latest.passCount,
+          failCount: latest.failCount,
+          score: latest.score,
+          practicedAt: latest.practicedAt,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.practiceSessions.userId, userId),
+            eq(schema.practiceSessions.id, sessionId),
+          ),
+        );
+    }
+
+    const [updatedAttempt] = await db
+      .select()
+      .from(schema.practiceAttempts)
+      .where(eq(schema.practiceAttempts.id, attemptId))
+      .limit(1);
+
+    return updatedAttempt;
   }
 
   /**
