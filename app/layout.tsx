@@ -16,6 +16,22 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                  window.location.reload();
+                }
+              });
+            `,
+          }}
+        />
+      </head>
       <body className="bg-[#212121] text-[#ececec] antialiased" suppressHydrationWarning>
         <ToastProvider>
           <AppShell>{children}</AppShell>
