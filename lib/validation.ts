@@ -97,7 +97,34 @@ export const recordResultSchema = z.object({
     .string()
     .datetime({ message: 'Practiced date must be a valid ISO 8601 timestamp.' })
     .optional(),
+  notes: z.string().max(5000, 'Notes cannot exceed 5,000 characters.').optional().nullable(),
   markCompleted: z.boolean().optional().default(true),
+});
+
+export const createAttemptSchema = z.object({
+  passCount: z
+    .number({ message: 'Pass count is required.' })
+    .int('Pass count must be a whole integer.')
+    .nonnegative('Pass count cannot be negative.'),
+  failCount: z
+    .number({ message: 'Fail count is required.' })
+    .int('Fail count must be a whole integer.')
+    .nonnegative('Fail count cannot be negative.'),
+  practicedAt: z
+    .string()
+    .datetime({ message: 'Practiced date must be a valid ISO 8601 timestamp.' })
+    .optional(),
+  notes: z.string().max(5000, 'Notes cannot exceed 5,000 characters.').optional().nullable(),
+  markCompleted: z.boolean().optional().default(true),
+});
+
+export const practiceAttemptImportSchema = z.object({
+  passCount: z.number().int().nonnegative(),
+  failCount: z.number().int().nonnegative(),
+  score: z.number().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  practicedAt: z.string(),
+  createdAt: z.string().optional().nullable(),
 });
 
 export const sessionImportItemSchema = z.object({
@@ -113,6 +140,7 @@ export const sessionImportItemSchema = z.object({
   practicedAt: z.string().optional().nullable(),
   createdAt: z.string().optional().nullable(),
   updatedAt: z.string().optional().nullable(),
+  attempts: z.array(practiceAttemptImportSchema).optional().nullable(),
 });
 
 export const importPayloadSchema = z.object({
@@ -127,4 +155,5 @@ export const importPayloadSchema = z.object({
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 export type UpdateSessionInput = z.infer<typeof updateSessionSchema>;
 export type RecordResultInput = z.infer<typeof recordResultSchema>;
+export type CreateAttemptInput = z.infer<typeof createAttemptSchema>;
 export type ImportPayload = z.infer<typeof importPayloadSchema>;

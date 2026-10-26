@@ -6,6 +6,7 @@ import {
   CreateSessionInput,
   UpdateSessionInput,
   RecordResultInput,
+  CreateAttemptInput,
   ImportPayload,
 } from '@/lib/validation';
 import { eq, and, desc, asc, like, or, sql, not } from 'drizzle-orm';
@@ -110,7 +111,7 @@ export class SessionService {
     const limit = options.limit ?? 100;
     const offset = options.offset ?? 0;
 
-    const [sessions, countResult] = await Promise.all([
+    const [sessions, countResult, attemptCounts] = await Promise.all([
       db
         .select()
         .from(schema.practiceSessions)
@@ -122,12 +123,28 @@ export class SessionService {
         .select({ count: sql<number>`count(*)` })
         .from(schema.practiceSessions)
         .where(whereClause),
+      db
+        .select({
+          sessionId: schema.practiceAttempts.sessionId,
+          count: sql<number>`count(*)`,
+        })
+        .from(schema.practiceAttempts)
+        .where(eq(schema.practiceAttempts.userId, userId))
+        .groupBy(schema.practiceAttempts.sessionId),
     ]);
 
     const total = countResult[0]?.count ?? 0;
 
+    const attemptMap = new Map<string, number>();
+    for (const a of attemptCounts) {
+      attemptMap.set(a.sessionId, a.count);
+    }
+
     return {
-      sessions: sessions.map(deserializeSession),
+      sessions: sessions.map((s) => ({
+        ...deserializeSession(s),
+        attemptCount: attemptMap.get(s.id) || (s.score !== null ? 1 : 0),
+      })),
       total,
       limit,
       offset,
@@ -135,7 +152,7 @@ export class SessionService {
   }
 
   /**
-   * Retrieves a single session by ID, scoped to user.
+   * Retrieves a single session by ID, scoped to user, including all practice attempts.
    */
   static async getSessionById(userId: string, sessionId: string) {
     await ensureDatabaseInitialized();
@@ -153,7 +170,23 @@ export class SessionService {
       .limit(1);
 
     if (!session) return null;
-    return deserializeSession(session);
+
+    const attempts = await db
+      .select()
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.userId, userId),
+          eq(schema.practiceAttempts.sessionId, sessionId),
+        ),
+      )
+      .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt));
+
+    return {
+      ...deserializeSession(session),
+      attempts,
+      attemptCount: attempts.length > 0 ? attempts.length : session.score !== null ? 1 : 0,
+    };
   }
 
   /**
@@ -187,6 +220,7 @@ export class SessionService {
     const now = new Date().toISOString();
 
     const score = calculateScore(input.passCount, input.failCount);
+    const practicedAt = input.practicedAt ?? (score !== null ? now : null);
 
     const tagsJson =
       input.tags && input.tags.length > 0 ? JSON.stringify(input.tags) : null;
@@ -203,14 +237,33 @@ export class SessionService {
       passCount: input.passCount ?? null,
       failCount: input.failCount ?? null,
       score,
-      practicedAt: input.practicedAt ?? (score !== null ? now : null),
+      practicedAt,
       createdAt: now,
       updatedAt: now,
     };
 
     await db.insert(schema.practiceSessions).values(newSession);
 
-    return deserializeSession(newSession);
+    // If initial practice results were entered, also record as first attempt in history
+    if (score !== null && typeof input.passCount === 'number' && typeof input.failCount === 'number') {
+      await db.insert(schema.practiceAttempts).values({
+        id: crypto.randomUUID(),
+        sessionId: id,
+        userId,
+        passCount: input.passCount,
+        failCount: input.failCount,
+        score,
+        notes: input.notes?.trim() || null,
+        practicedAt: practicedAt || now,
+        createdAt: now,
+      });
+    }
+
+    return {
+      ...deserializeSession(newSession),
+      attempts: [],
+      attemptCount: score !== null ? 1 : 0,
+    };
   }
 
   /**
@@ -250,7 +303,6 @@ export class SessionService {
 
     if (input.chatgptUrl !== undefined) {
       const normalizedUrl = normalizeChatGPTUrl(input.chatgptUrl);
-      // Check if another session for this user has this URL
       const [duplicate] = await db
         .select({ id: schema.practiceSessions.id })
         .from(schema.practiceSessions)
@@ -286,7 +338,6 @@ export class SessionService {
         input.tags && input.tags.length > 0 ? JSON.stringify(input.tags) : null;
     }
 
-    // Check if passCount or failCount are being updated
     const newPass =
       input.passCount !== undefined ? input.passCount : existing.passCount;
     const newFail =
@@ -313,21 +364,11 @@ export class SessionService {
         ),
       );
 
-    const [updated] = await db
-      .select()
-      .from(schema.practiceSessions)
-      .where(
-        and(
-          eq(schema.practiceSessions.userId, userId),
-          eq(schema.practiceSessions.id, sessionId),
-        ),
-      );
-
-    return deserializeSession(updated);
+    return this.getSessionById(userId, sessionId);
   }
 
   /**
-   * Deletes a session by ID with owner check.
+   * Deletes a session by ID with owner check. Cascade deletes attempts.
    */
   static async deleteSession(userId: string, sessionId: string) {
     await ensureDatabaseInitialized();
@@ -348,6 +389,16 @@ export class SessionService {
       throw new Error('Session not found or access denied.');
     }
 
+    // Delete attempts for this session
+    await db
+      .delete(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.userId, userId),
+          eq(schema.practiceAttempts.sessionId, sessionId),
+        ),
+      );
+
     await db
       .delete(schema.practiceSessions)
       .where(
@@ -361,22 +412,200 @@ export class SessionService {
   }
 
   /**
-   * Records practice results (PassCount, FailCount, PracticedAt) and recomputes score.
+   * Adds a new practice attempt / history entry to a session and updates parent scores.
+   */
+  static async addAttempt(
+    userId: string,
+    sessionId: string,
+    input: CreateAttemptInput,
+  ) {
+    await ensureDatabaseInitialized();
+    const db = getDb();
+
+    const [session] = await db
+      .select()
+      .from(schema.practiceSessions)
+      .where(
+        and(
+          eq(schema.practiceSessions.userId, userId),
+          eq(schema.practiceSessions.id, sessionId),
+        ),
+      )
+      .limit(1);
+
+    if (!session) {
+      throw new Error('Session not found or access denied.');
+    }
+
+    const score = calculateScore(input.passCount, input.failCount);
+    if (score === null) {
+      throw new Error('Valid Pass and Fail counts are required to record practice score.');
+    }
+
+    const now = new Date().toISOString();
+    const practicedAt = input.practicedAt || now;
+    const attemptId = crypto.randomUUID();
+
+    const newAttempt = {
+      id: attemptId,
+      sessionId,
+      userId,
+      passCount: input.passCount,
+      failCount: input.failCount,
+      score,
+      notes: input.notes?.trim() || null,
+      practicedAt,
+      createdAt: now,
+    };
+
+    await db.insert(schema.practiceAttempts).values(newAttempt);
+
+    // Update parent session with latest attempt score, counts, practicedAt, status
+    const newStatus = input.markCompleted
+      ? 'COMPLETED'
+      : session.status === 'PLANNED'
+        ? 'IN_PROGRESS'
+        : session.status;
+
+    await db
+      .update(schema.practiceSessions)
+      .set({
+        passCount: input.passCount,
+        failCount: input.failCount,
+        score,
+        practicedAt,
+        status: newStatus,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.practiceSessions.userId, userId),
+          eq(schema.practiceSessions.id, sessionId),
+        ),
+      );
+
+    return newAttempt;
+  }
+
+  /**
+   * Lists all practice attempts for a session.
+   */
+  static async listAttempts(userId: string, sessionId: string) {
+    await ensureDatabaseInitialized();
+    const db = getDb();
+
+    return db
+      .select()
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.userId, userId),
+          eq(schema.practiceAttempts.sessionId, sessionId),
+        ),
+      )
+      .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt));
+  }
+
+  /**
+   * Deletes a specific practice attempt and syncs parent session to latest remaining attempt.
+   */
+  static async deleteAttempt(userId: string, sessionId: string, attemptId: string) {
+    await ensureDatabaseInitialized();
+    const db = getDb();
+
+    const [attempt] = await db
+      .select()
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.id, attemptId),
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (!attempt) {
+      throw new Error('Practice attempt not found or access denied.');
+    }
+
+    await db
+      .delete(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.id, attemptId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      );
+
+    // Find latest remaining attempt
+    const [latest] = await db
+      .select()
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      )
+      .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt))
+      .limit(1);
+
+    const now = new Date().toISOString();
+    if (latest) {
+      await db
+        .update(schema.practiceSessions)
+        .set({
+          passCount: latest.passCount,
+          failCount: latest.failCount,
+          score: latest.score,
+          practicedAt: latest.practicedAt,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.practiceSessions.userId, userId),
+            eq(schema.practiceSessions.id, sessionId),
+          ),
+        );
+    } else {
+      await db
+        .update(schema.practiceSessions)
+        .set({
+          passCount: null,
+          failCount: null,
+          score: null,
+          practicedAt: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.practiceSessions.userId, userId),
+            eq(schema.practiceSessions.id, sessionId),
+          ),
+        );
+    }
+
+    return { success: true };
+  }
+
+  /**
+   * Records practice results (backward-compatible; logs attempt in history).
    */
   static async recordResult(
     userId: string,
     sessionId: string,
     input: RecordResultInput,
   ) {
-    const score = calculateScore(input.passCount, input.failCount);
-    const now = new Date().toISOString();
-
-    return this.updateSession(userId, sessionId, {
+    await this.addAttempt(userId, sessionId, {
       passCount: input.passCount,
       failCount: input.failCount,
-      practicedAt: input.practicedAt || now,
-      status: input.markCompleted ? 'COMPLETED' : undefined,
+      practicedAt: input.practicedAt,
+      notes: input.notes,
+      markCompleted: input.markCompleted,
     });
+
+    return this.getSessionById(userId, sessionId);
   }
 
   /**
@@ -386,18 +615,22 @@ export class SessionService {
     await ensureDatabaseInitialized();
     const db = getDb();
 
-    const sessions = await db
-      .select()
-      .from(schema.practiceSessions)
-      .where(eq(schema.practiceSessions.userId, userId))
-      .orderBy(desc(schema.practiceSessions.updatedAt));
+    const [sessions, attempts] = await Promise.all([
+      db
+        .select()
+        .from(schema.practiceSessions)
+        .where(eq(schema.practiceSessions.userId, userId))
+        .orderBy(desc(schema.practiceSessions.updatedAt)),
+      db
+        .select()
+        .from(schema.practiceAttempts)
+        .where(eq(schema.practiceAttempts.userId, userId)),
+    ]);
 
     const totalSessions = sessions.length;
     let plannedSessions = 0;
     let inProgressSessions = 0;
     let completedSessions = 0;
-    let totalPass = 0;
-    let totalFail = 0;
     let completedScoresSum = 0;
     let completedScoredCount = 0;
 
@@ -411,12 +644,20 @@ export class SessionService {
           completedScoredCount++;
         }
       }
+    }
 
-      if (s.passCount !== null && s.passCount !== undefined) {
-        totalPass += s.passCount;
+    let totalPass = 0;
+    let totalFail = 0;
+
+    if (attempts.length > 0) {
+      for (const a of attempts) {
+        totalPass += a.passCount;
+        totalFail += a.failCount;
       }
-      if (s.failCount !== null && s.failCount !== undefined) {
-        totalFail += s.failCount;
+    } else {
+      for (const s of sessions) {
+        if (s.passCount !== null && s.passCount !== undefined) totalPass += s.passCount;
+        if (s.failCount !== null && s.failCount !== undefined) totalFail += s.failCount;
       }
     }
 
@@ -444,23 +685,41 @@ export class SessionService {
       totalFail,
       recentSessions,
       unfinishedSessions,
+      totalAttempts: attempts.length,
     };
   }
 
   /**
-   * Exports all user sessions in JSON or CSV.
+   * Exports all user sessions and attempts in JSON or CSV.
    */
   static async exportData(userId: string, format: 'json' | 'csv' = 'json') {
     await ensureDatabaseInitialized();
     const db = getDb();
 
-    const rows = await db
-      .select()
-      .from(schema.practiceSessions)
-      .where(eq(schema.practiceSessions.userId, userId))
-      .orderBy(desc(schema.practiceSessions.createdAt));
+    const [rows, allAttempts] = await Promise.all([
+      db
+        .select()
+        .from(schema.practiceSessions)
+        .where(eq(schema.practiceSessions.userId, userId))
+        .orderBy(desc(schema.practiceSessions.createdAt)),
+      db
+        .select()
+        .from(schema.practiceAttempts)
+        .where(eq(schema.practiceAttempts.userId, userId))
+        .orderBy(desc(schema.practiceAttempts.practicedAt)),
+    ]);
 
-    const sessions = rows.map(deserializeSession);
+    const attemptsBySession = new Map<string, any[]>();
+    for (const a of allAttempts) {
+      const list = attemptsBySession.get(a.sessionId) || [];
+      list.push(a);
+      attemptsBySession.set(a.sessionId, list);
+    }
+
+    const sessions = rows.map((r) => ({
+      ...deserializeSession(r),
+      attempts: attemptsBySession.get(r.id) || [],
+    }));
 
     if (format === 'csv') {
       const headers = [
@@ -470,6 +729,7 @@ export class SessionService {
         'Score',
         'Pass Count',
         'Fail Count',
+        'Total Attempts',
         'Notes',
         'Tags',
         'Practiced At',
@@ -487,6 +747,7 @@ export class SessionService {
           s.score !== null ? s.score.toFixed(1) : '',
           s.passCount !== null ? String(s.passCount) : '',
           s.failCount !== null ? String(s.failCount) : '',
+          String(s.attempts.length || (s.score !== null ? 1 : 0)),
           escapeCsvField(s.notes || ''),
           escapeCsvField(s.tags.join('; ')),
           escapeCsvField(s.practicedAt || ''),
@@ -504,7 +765,7 @@ export class SessionService {
     }
 
     const payload = {
-      version: '1.0.0',
+      version: '1.1.0',
       exportedAt: new Date().toISOString(),
       totalSessions: sessions.length,
       sessions: sessions.map((s) => ({
@@ -519,6 +780,14 @@ export class SessionService {
         practicedAt: s.practicedAt,
         createdAt: s.createdAt,
         updatedAt: s.updatedAt,
+        attempts: s.attempts.map((a: any) => ({
+          passCount: a.passCount,
+          failCount: a.failCount,
+          score: a.score,
+          notes: a.notes,
+          practicedAt: a.practicedAt,
+          createdAt: a.createdAt,
+        })),
       })),
     };
 
@@ -530,7 +799,7 @@ export class SessionService {
   }
 
   /**
-   * Imports validated sessions into user database.
+   * Imports validated sessions and their attempts into user database.
    */
   static async importData(userId: string, payload: ImportPayload) {
     await ensureDatabaseInitialized();
@@ -563,7 +832,7 @@ export class SessionService {
 
         if (seenUrlsInBatch.has(normalizedUrl)) {
           skipped++;
-          continue; // Deduplicate within the file itself
+          continue;
         }
         seenUrlsInBatch.add(normalizedUrl);
 
@@ -582,6 +851,8 @@ export class SessionService {
         const tagsJson = parsedTags.length > 0 ? JSON.stringify(parsedTags) : null;
 
         const existingId = existingMap.get(normalizedUrl);
+
+        let targetSessionId = existingId;
 
         if (existingId) {
           if (payload.duplicateStrategy === 'update' || payload.duplicateStrategy === 'replace') {
@@ -607,14 +878,14 @@ export class SessionService {
               );
             updated++;
           } else {
-            // skip
             skipped++;
+            continue;
           }
         } else {
-          // insert new
-          const id = crypto.randomUUID();
+          // Insert new session
+          targetSessionId = crypto.randomUUID();
           await db.insert(schema.practiceSessions).values({
-            id,
+            id: targetSessionId,
             userId,
             topic: item.topic.trim(),
             chatgptUrl: item.chatgptUrl.trim(),
@@ -629,8 +900,30 @@ export class SessionService {
             createdAt: item.createdAt || now,
             updatedAt: item.updatedAt || now,
           });
-          existingMap.set(normalizedUrl, id);
+          existingMap.set(normalizedUrl, targetSessionId);
           inserted++;
+        }
+
+        // Import attempts if provided
+        if (targetSessionId && Array.isArray(item.attempts) && item.attempts.length > 0) {
+          for (const att of item.attempts) {
+            const attScore =
+              att.score !== undefined && att.score !== null
+                ? att.score
+                : calculateScore(att.passCount, att.failCount) || 0;
+
+            await db.insert(schema.practiceAttempts).values({
+              id: crypto.randomUUID(),
+              sessionId: targetSessionId,
+              userId,
+              passCount: att.passCount,
+              failCount: att.failCount,
+              score: attScore,
+              notes: att.notes?.trim() || null,
+              practicedAt: att.practicedAt || now,
+              createdAt: att.createdAt || now,
+            });
+          }
         }
       } catch (err: any) {
         errors.push({
@@ -672,18 +965,15 @@ function deserializeSession(row: any) {
 
 /**
  * Escapes CSV field and mitigates CSV formula injection vulnerabilities.
- * Prefixes cells starting with '=', '+', '-', '@', '\t', '\r' with a single quote.
  */
 function escapeCsvField(field: string): string {
   if (!field) return '""';
   let sanitized = field;
 
-  // Formula injection prevention
   if (/^[=+\-@\t\r]/.test(sanitized)) {
     sanitized = "'" + sanitized;
   }
 
-  // Escape double quotes
   sanitized = sanitized.replace(/"/g, '""');
   return `"${sanitized}"`;
 }

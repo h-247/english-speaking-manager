@@ -1,4 +1,22 @@
-import { CreateSessionInput, UpdateSessionInput, RecordResultInput, ImportPayload } from '@/lib/validation';
+import {
+  CreateSessionInput,
+  UpdateSessionInput,
+  RecordResultInput,
+  CreateAttemptInput,
+  ImportPayload,
+} from '@/lib/validation';
+
+export interface PracticeAttemptItem {
+  id: string;
+  sessionId: string;
+  userId: string;
+  passCount: number;
+  failCount: number;
+  score: number;
+  notes: string | null;
+  practicedAt: string;
+  createdAt: string;
+}
 
 export interface SessionItem {
   id: string;
@@ -15,6 +33,8 @@ export interface SessionItem {
   practicedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  attemptCount?: number;
+  attempts?: PracticeAttemptItem[];
 }
 
 export interface DashboardData {
@@ -27,6 +47,7 @@ export interface DashboardData {
   totalFail: number;
   recentSessions: SessionItem[];
   unfinishedSessions: SessionItem[];
+  totalAttempts?: number;
 }
 
 export interface SessionsResponse {
@@ -131,6 +152,47 @@ export async function recordResult(
     throw new Error(err.error || 'Failed to record results');
   }
   return res.json();
+}
+
+export async function fetchAttempts(sessionId: string): Promise<PracticeAttemptItem[]> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/attempts`);
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch practice attempts');
+  }
+  return res.json();
+}
+
+export async function addAttempt(
+  sessionId: string,
+  data: CreateAttemptInput,
+): Promise<PracticeAttemptItem> {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/attempts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to add practice attempt');
+  }
+  return res.json();
+}
+
+export async function deleteAttempt(
+  sessionId: string,
+  attemptId: string,
+): Promise<void> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/attempts/${encodeURIComponent(attemptId)}`,
+    {
+      method: 'DELETE',
+    },
+  );
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete practice attempt');
+  }
 }
 
 export async function importSessions(payload: ImportPayload) {

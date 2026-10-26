@@ -31,6 +31,20 @@ export async function ensureDatabaseInitialized(): Promise<void> {
       `);
 
       await db.run(sql`
+        CREATE TABLE IF NOT EXISTS practice_attempts (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES practice_sessions(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL,
+          pass_count INTEGER NOT NULL,
+          fail_count INTEGER NOT NULL,
+          score REAL NOT NULL,
+          notes TEXT,
+          practiced_at TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+      `);
+
+      await db.run(sql`
         CREATE TABLE IF NOT EXISTS custom_prompts (
           id TEXT PRIMARY KEY,
           user_id TEXT NOT NULL,
@@ -66,6 +80,18 @@ export async function ensureDatabaseInitialized(): Promise<void> {
         db.run(sql`
           CREATE INDEX IF NOT EXISTS user_topic_idx 
           ON practice_sessions (user_id, topic);
+        `),
+        db.run(sql`
+          CREATE INDEX IF NOT EXISTS attempt_session_idx 
+          ON practice_attempts (session_id);
+        `),
+        db.run(sql`
+          CREATE INDEX IF NOT EXISTS attempt_user_idx 
+          ON practice_attempts (user_id);
+        `),
+        db.run(sql`
+          CREATE INDEX IF NOT EXISTS attempt_practiced_at_idx 
+          ON practice_attempts (practiced_at);
         `),
       ]);
 

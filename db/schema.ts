@@ -38,6 +38,28 @@ export const practiceSessions = sqliteTable(
   ],
 );
 
+export const practiceAttempts = sqliteTable(
+  'practice_attempts',
+  {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => practiceSessions.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull(),
+    passCount: integer('pass_count').notNull(),
+    failCount: integer('fail_count').notNull(),
+    score: real('score').notNull(),
+    notes: text('notes'),
+    practicedAt: text('practiced_at').notNull(), // ISO 8601 string
+    createdAt: text('created_at').notNull(), // ISO 8601 string
+  },
+  (table) => [
+    index('attempt_session_idx').on(table.sessionId),
+    index('attempt_user_idx').on(table.userId),
+    index('attempt_practiced_at_idx').on(table.practicedAt),
+  ],
+);
+
 export const customPrompts = sqliteTable(
   'custom_prompts',
   {
@@ -55,5 +77,7 @@ export const customPrompts = sqliteTable(
 
 export type PracticeSession = typeof practiceSessions.$inferSelect;
 export type NewPracticeSession = typeof practiceSessions.$inferInsert;
+export type PracticeAttempt = typeof practiceAttempts.$inferSelect;
+export type NewPracticeAttempt = typeof practiceAttempts.$inferInsert;
 export type CustomPrompt = typeof customPrompts.$inferSelect;
 export type NewCustomPrompt = typeof customPrompts.$inferInsert;

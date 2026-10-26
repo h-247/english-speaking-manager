@@ -57,6 +57,11 @@ export function SessionCard({
           <div className="flex items-center gap-2 flex-wrap mb-1.5">
             <StatusBadge status={session.status} size="sm" />
             {session.score !== null && <ScoreDisplay score={session.score} size="sm" />}
+            {session.attemptCount !== undefined && session.attemptCount > 0 && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#1c2e42] text-sky-300 border border-sky-800/50 font-medium">
+                {session.attemptCount} {session.attemptCount === 1 ? 'attempt' : 'attempts'}
+              </span>
+            )}
           </div>
           <Link
             href={`/sessions/${session.id}`}

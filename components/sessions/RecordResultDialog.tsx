@@ -22,6 +22,16 @@ export interface RecordResultDialogProps {
   onSuccess: () => void;
 }
 
+function toLocalDatetimeInputValue(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export function RecordResultDialog({
   isOpen,
   onClose,
@@ -32,6 +42,7 @@ export function RecordResultDialog({
   const [passCountStr, setPassCountStr] = useState<string>('');
   const [failCountStr, setFailCountStr] = useState<string>('');
   const [practicedDate, setPracticedDate] = useState<string>('');
+  const [notes, setNotes] = useState<string>('');
   const [markCompleted, setMarkCompleted] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ pass?: string; fail?: string }>({});
@@ -48,11 +59,8 @@ export function RecordResultDialog({
           ? String(session.failCount)
           : '',
       );
-      setPracticedDate(
-        session.practicedAt
-          ? new Date(session.practicedAt).toISOString().slice(0, 16)
-          : new Date().toISOString().slice(0, 16),
-      );
+      setPracticedDate(toLocalDatetimeInputValue(new Date()));
+      setNotes('');
       setMarkCompleted(true);
       setErrors({});
     }
@@ -88,6 +96,7 @@ export function RecordResultDialog({
         passCount: Number(passCountStr),
         failCount: Number(failCountStr),
         practicedAt: isoPracticed,
+        notes: notes.trim() || undefined,
         markCompleted,
       });
 
@@ -175,6 +184,20 @@ export function RecordResultDialog({
           onChange={(e) => setPracticedDate(e.target.value)}
           helperText="Timezone: Asia/Ho_Chi_Minh"
         />
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="attemptNotes" className="text-xs font-semibold text-gray-300">
+            Attempt Notes & Feedback (Optional)
+          </label>
+          <textarea
+            id="attemptNotes"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. Pronunciation was better, struggled with faster sentence chunks in point 2..."
+            className="w-full px-3 py-2 text-sm rounded-lg bg-[#1a1a1a] border border-[#383838] text-[#ececec] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-white transition-colors resize-none"
+          />
+        </div>
 
         <label className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-[#202020] cursor-pointer text-sm text-gray-300 select-none">
           <input

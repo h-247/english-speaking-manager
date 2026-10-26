@@ -10,7 +10,12 @@ import { SessionFormDialog } from '@/components/sessions/SessionFormDialog';
 import { RecordResultDialog } from '@/components/sessions/RecordResultDialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { fetchSession, deleteSession, SessionItem } from '@/lib/api-client';
+import {
+  fetchSession,
+  deleteSession,
+  deleteAttempt,
+  SessionItem,
+} from '@/lib/api-client';
 import { formatDate } from '@/lib/format-date';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -27,6 +32,11 @@ import {
   Sparkles,
   Link as LinkIcon,
   MessageSquare,
+  History,
+  Plus,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 
 export default function SessionDetailsPage({
@@ -47,6 +57,10 @@ export default function SessionDetailsPage({
   const [isResultOpen, setIsResultOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Attempt deletion states
+  const [attemptToDelete, setAttemptToDelete] = useState<string | null>(null);
+  const [isDeletingAttempt, setIsDeletingAttempt] = useState(false);
 
   const loadSession = useCallback(async () => {
     setIsLoading(true);
@@ -87,6 +101,21 @@ export default function SessionDetailsPage({
     }
   };
 
+  const handleConfirmDeleteAttempt = async () => {
+    if (!session || !attemptToDelete) return;
+    setIsDeletingAttempt(true);
+    try {
+      await deleteAttempt(session.id, attemptToDelete);
+      showSuccess('Practice attempt deleted.');
+      setAttemptToDelete(null);
+      await loadSession();
+    } catch (err: any) {
+      showError(err.message || 'Failed to delete practice attempt.');
+    } finally {
+      setIsDeletingAttempt(false);
+    }
+  };
+
   if (isLoading) {
     return <LoadingState message="Loading speaking session details..." />;
   }
@@ -109,6 +138,14 @@ export default function SessionDetailsPage({
   }
 
   const isUnfinished = session.status === 'PLANNED' || session.status === 'IN_PROGRESS';
+  const attempts = session.attempts || [];
+  const latestAttempt = attempts[0];
+  const firstAttempt = attempts[attempts.length - 1];
+  const bestScore = attempts.length > 0 ? Math.max(...attempts.map((a) => a.score)) : null;
+  const scoreDiff =
+    latestAttempt && firstAttempt && attempts.length > 1
+      ? Math.round((latestAttempt.score - firstAttempt.score) * 10) / 10
+      : null;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-in fade-in duration-150">
@@ -130,6 +167,11 @@ export default function SessionDetailsPage({
             <div className="flex items-center gap-2.5 flex-wrap">
               <StatusBadge status={session.status} size="md" />
               {session.score !== null && <ScoreDisplay score={session.score} size="md" />}
+              {attempts.length > 0 && (
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#1c2e42] text-sky-300 border border-sky-800/50 font-medium">
+                  {attempts.length} {attempts.length === 1 ? 'practice attempt' : 'practice attempts'}
+                </span>
+              )}
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#ececec] tracking-tight">
               {session.topic}
@@ -176,31 +218,31 @@ export default function SessionDetailsPage({
           </Button>
         </div>
 
-        {/* Practice Metrics Grid */}
+        {/* Latest Practice Metrics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-[#333333]">
           <div className="p-3.5 rounded-lg bg-[#1e1e1e] border border-[#333333]">
-            <span className="text-xs text-gray-400 block font-medium">Practice Score</span>
+            <span className="text-xs text-gray-400 block font-medium">Latest Score</span>
             <div className="mt-1">
               <ScoreDisplay score={session.score} size="lg" />
             </div>
           </div>
 
           <div className="p-3.5 rounded-lg bg-[#1e1e1e] border border-[#333333]">
-            <span className="text-xs text-gray-400 block font-medium">Pass Count</span>
+            <span className="text-xs text-gray-400 block font-medium">Latest Pass Count</span>
             <span className="text-xl font-bold font-mono text-emerald-400 mt-1 block">
               {session.passCount !== null ? session.passCount : '—'}
             </span>
           </div>
 
           <div className="p-3.5 rounded-lg bg-[#1e1e1e] border border-[#333333]">
-            <span className="text-xs text-gray-400 block font-medium">Fail Count</span>
+            <span className="text-xs text-gray-400 block font-medium">Latest Fail Count</span>
             <span className="text-xl font-bold font-mono text-rose-400 mt-1 block">
               {session.failCount !== null ? session.failCount : '—'}
             </span>
           </div>
 
           <div className="p-3.5 rounded-lg bg-[#1e1e1e] border border-[#333333]">
-            <span className="text-xs text-gray-400 block font-medium">Accuracy</span>
+            <span className="text-xs text-gray-400 block font-medium">Latest Accuracy</span>
             <span className="text-xl font-bold font-mono text-gray-200 mt-1 block">
               {session.score !== null ? `${(session.score * 10).toFixed(0)}%` : '—'}
             </span>
@@ -212,7 +254,7 @@ export default function SessionDetailsPage({
           <div>
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <MessageSquare className="w-3.5 h-3.5" />
-              Notes & Feedback
+              Session Notes & Overview
             </h3>
             {session.notes ? (
               <div className="p-4 rounded-lg bg-[#1a1a1a] border border-[#333333] text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
@@ -253,7 +295,7 @@ export default function SessionDetailsPage({
             {session.practicedAt && (
               <div className="flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-gray-500" />
-                <span>Practiced: {formatDate(session.practicedAt)}</span>
+                <span>Last Practiced: {formatDate(session.practicedAt)}</span>
               </div>
             )}
           </div>
@@ -285,6 +327,185 @@ export default function SessionDetailsPage({
         </div>
       </div>
 
+      {/* Practice History & Score Progression Section */}
+      <div className="bg-[#262626] border border-[#383838] rounded-xl p-6 sm:p-8 shadow-md flex flex-col gap-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-lg bg-sky-950/40 text-sky-400 border border-sky-800/40">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-bold text-[#ececec]">
+                  Practice History & Scores
+                </h2>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#1c2e42] text-sky-300 border border-sky-800/50 font-medium">
+                  {attempts.length} {attempts.length === 1 ? 'attempt' : 'attempts'}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Chronological log of speaking attempts and scores for this ChatGPT link
+              </p>
+            </div>
+          </div>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setIsResultOpen(true)}
+            className="shrink-0"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            Log Practice Attempt
+          </Button>
+        </div>
+
+        {/* Score Progression Overview Card (if > 1 attempt) */}
+        {attempts.length > 1 && scoreDiff !== null && firstAttempt && latestAttempt && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-[#1e1e1e] border border-[#383838]">
+            <div>
+              <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
+                Initial Score
+              </span>
+              <div className="mt-1">
+                <ScoreDisplay score={firstAttempt.score} size="md" />
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
+                Latest Score
+              </span>
+              <div className="mt-1">
+                <ScoreDisplay score={latestAttempt.score} size="md" />
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
+                Best Score
+              </span>
+              <div className="mt-1">
+                <ScoreDisplay score={bestScore} size="md" />
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
+                Progression
+              </span>
+              <div className="mt-1 flex items-center gap-1.5">
+                {scoreDiff > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-sm font-bold text-emerald-400">
+                    <TrendingUp className="w-4 h-4" />
+                    +{scoreDiff.toFixed(1)}
+                  </span>
+                ) : scoreDiff < 0 ? (
+                  <span className="inline-flex items-center gap-1 text-sm font-bold text-rose-400">
+                    <TrendingDown className="w-4 h-4" />
+                    {scoreDiff.toFixed(1)}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-sm font-bold text-gray-400">
+                    <Minus className="w-4 h-4" />
+                    0.0
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Attempts List */}
+        {attempts.length > 0 ? (
+          <div className="space-y-3">
+            {attempts.map((attempt, index) => {
+              const attemptNumber = attempts.length - index;
+              const isLatest = index === 0 && attempts.length > 1;
+              const totalAttemptsForSentences = attempt.passCount + attempt.failCount;
+              const accuracy =
+                totalAttemptsForSentences > 0
+                  ? Math.round((attempt.passCount / totalAttemptsForSentences) * 100)
+                  : 0;
+
+              return (
+                <div
+                  key={attempt.id}
+                  className="p-4 sm:p-5 rounded-xl bg-[#1c1c1c] border border-[#333333] hover:border-[#444444] transition-all flex flex-col gap-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-[#2b2b2b] text-gray-200 border border-[#3d3d3d]">
+                        Attempt #{attemptNumber}
+                      </span>
+                      {isLatest && (
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/40">
+                          Latest Attempt
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-gray-500" />
+                        {formatDate(attempt.practicedAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <ScoreDisplay score={attempt.score} size="md" />
+                      <button
+                        onClick={() => setAttemptToDelete(attempt.id)}
+                        className="p-1.5 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
+                        title="Delete this practice attempt"
+                        aria-label="Delete this practice attempt"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 py-2 px-3 rounded-lg bg-[#161616] border border-[#2b2b2b] text-xs">
+                    <div>
+                      <span className="text-gray-400 block text-[11px]">Pass Count</span>
+                      <span className="font-mono font-bold text-emerald-400">
+                        {attempt.passCount}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block text-[11px]">Fail Count</span>
+                      <span className="font-mono font-bold text-rose-400">
+                        {attempt.failCount}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block text-[11px]">Accuracy</span>
+                      <span className="font-mono font-bold text-gray-200">{accuracy}%</span>
+                    </div>
+                  </div>
+
+                  {attempt.notes && (
+                    <div className="text-xs text-gray-300 bg-[#171717] p-3 rounded-lg border border-[#2b2b2b] whitespace-pre-wrap">
+                      <span className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">
+                        Attempt Feedback / Notes:
+                      </span>
+                      {attempt.notes}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-8 px-4 rounded-xl border border-dashed border-[#383838] bg-[#1a1a1a]/60 space-y-3">
+            <p className="text-sm text-gray-400">
+              No practice attempts recorded yet for this ChatGPT conversation.
+            </p>
+            <Button variant="outline" size="sm" onClick={() => setIsResultOpen(true)}>
+              <Plus className="w-4 h-4 mr-1.5" />
+              Record First Practice Attempt
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Dialogs */}
       <SessionFormDialog
         isOpen={isEditOpen}
@@ -300,14 +521,26 @@ export default function SessionDetailsPage({
         onSuccess={loadSession}
       />
 
+      {/* Delete Full Session Dialog */}
       <ConfirmDialog
         isOpen={isDeleteOpen}
         onClose={() => setIsDeleteOpen(false)}
         onConfirm={handleConfirmDelete}
         isLoading={isDeleting}
         title="Delete Session Record"
-        message={`Are you sure you want to delete "${session.topic}"? This removes the record from your manager. (Your ChatGPT conversation will not be affected).`}
+        message={`Are you sure you want to delete "${session.topic}"? This removes the session and all practice attempt history from your manager. (Your ChatGPT conversation will not be affected).`}
         confirmLabel="Delete Session"
+      />
+
+      {/* Delete Single Attempt Dialog */}
+      <ConfirmDialog
+        isOpen={attemptToDelete !== null}
+        onClose={() => setAttemptToDelete(null)}
+        onConfirm={handleConfirmDeleteAttempt}
+        isLoading={isDeletingAttempt}
+        title="Delete Practice Attempt"
+        message="Are you sure you want to delete this practice attempt? The session's latest score and stats will automatically adjust to the remaining attempts."
+        confirmLabel="Delete Attempt"
       />
     </div>
   );

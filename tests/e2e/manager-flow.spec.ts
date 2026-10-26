@@ -148,4 +148,59 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await expect(page.getByRole('link', { name: /Coach Prompt/i }).first()).toBeVisible();
     await expect(page.getByRole('link', { name: /Sessions/i }).first()).toBeVisible();
   });
+
+  test('5. Multi-attempt practice tracking and score progression for ChatGPT link', async ({ page }) => {
+    const testTopic = `Multi Attempt Topic ${Date.now()}`;
+    const testUrl = `https://chatgpt.com/c/multi-attempt-${Date.now()}`;
+
+    // 1. Create a session
+    await page.goto('/sessions');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: /Add Session/i }).first().click();
+    await page.getByLabel(/^Topic/i).fill(testTopic);
+    await page.getByLabel(/ChatGPT Conversation URL/i).fill(testUrl);
+    await page.getByRole('button', { name: /Create Session/i }).click();
+
+    // 2. Open session details
+    const sessionLink = page.getByRole('link', { name: testTopic }).first();
+    await expect(sessionLink).toBeVisible({ timeout: 10000 });
+    await sessionLink.click();
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByRole('heading', { name: testTopic })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Practice History & Scores')).toBeVisible();
+
+    // 3. Log Attempt #1 (40 Pass, 10 Fail => 8.0/10)
+    await page.getByRole('button', { name: /Record First Practice Attempt|Log Practice Attempt|Record Results/i }).first().click();
+    await page.getByLabel(/Pass Count/i).fill('40');
+    await page.getByLabel(/Fail Count/i).fill('10');
+    await page.getByRole('button', { name: /Save Results/i }).click();
+    await expect(page.getByText(/Recorded practice results/i)).toBeVisible({ timeout: 5000 });
+
+    // Verify Attempt #1 appears
+    await expect(page.getByText(/Attempt #1/i)).toBeVisible();
+    await expect(page.getByText('8.0/10').first()).toBeVisible();
+
+    // 4. Log Attempt #2 (45 Pass, 5 Fail => 9.0/10)
+    await page.getByRole('button', { name: /Log Practice Attempt/i }).click();
+    await page.getByLabel(/Pass Count/i).fill('45');
+    await page.getByLabel(/Fail Count/i).fill('5');
+    await page.getByRole('button', { name: /Save Results/i }).click();
+    await expect(page.getByText(/Recorded practice results/i)).toBeVisible({ timeout: 5000 });
+
+    // Verify 2 attempts, Progression shows +1.0, and Latest Score is 9.0/10
+    await expect(page.getByText(/2 practice attempts/i).first()).toBeVisible();
+    await expect(page.getByText(/Attempt #2/i)).toBeVisible();
+    await expect(page.getByText('+1.0')).toBeVisible();
+
+    // 5. Delete Attempt #2 and verify fallback to Attempt #1 (8.0/10)
+    const deleteAttemptBtn = page.locator('button[title="Delete this practice attempt"]').first();
+    await deleteAttemptBtn.click();
+    await expect(page.getByRole('heading', { name: /Delete Practice Attempt/i })).toBeVisible();
+    await page.getByRole('button', { name: /Delete Attempt/i }).click();
+    await expect(page.getByText(/Practice attempt deleted/i)).toBeVisible({ timeout: 5000 });
+
+    // Score should adjust back to 8.0/10
+    await expect(page.getByText('8.0/10').first()).toBeVisible();
+  });
 });

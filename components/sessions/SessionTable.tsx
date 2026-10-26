@@ -98,7 +98,17 @@ export function SessionTable({
 
                 {/* Score */}
                 <td className="py-3.5 px-4 whitespace-nowrap">
-                  <ScoreDisplay score={session.score} size="md" />
+                  <div className="flex items-center gap-1.5">
+                    <ScoreDisplay score={session.score} size="md" />
+                    {session.attemptCount !== undefined && session.attemptCount > 0 && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 font-mono rounded bg-[#1c2e42] text-sky-300 border border-sky-800/50"
+                        title={`${session.attemptCount} practice ${session.attemptCount === 1 ? 'attempt' : 'attempts'} recorded`}
+                      >
+                        {session.attemptCount}x
+                      </span>
+                    )}
+                  </div>
                 </td>
 
                 {/* Pass / Fail counts */}
