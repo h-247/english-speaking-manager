@@ -181,12 +181,12 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await expect(page.getByText(/Attempt #1/i).first()).toBeVisible();
     await expect(page.getByText('8.0/10').first()).toBeVisible();
 
-    // 4. Log Attempt #2 with a branched ChatGPT URL (45 Pass, 5 Fail => 9.0/10)
-    const branchUrl = `https://chatgpt.com/c/branch-${Date.now()}`;
+    // 4. Log Attempt #2 with an additional ChatGPT URL (45 Pass, 5 Fail => 9.0/10)
+    const secondUrl = `https://chatgpt.com/c/second-${Date.now()}`;
     await page.getByRole('button', { name: /Log Practice Attempt/i }).click();
     await page.getByLabel(/Pass Count/i).fill('45');
     await page.getByLabel(/Fail Count/i).fill('5');
-    await page.getByLabel(/ChatGPT (Conversation URL|Branch Link)/i).fill(branchUrl);
+    await page.getByLabel(/ChatGPT Conversation URL/i).fill(secondUrl);
     await page.getByRole('button', { name: /Save Results/i }).click();
     await expect(page.getByText(/Recorded practice results/i)).toBeVisible({ timeout: 5000 });
 
@@ -195,10 +195,10 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await expect(page.getByText(/Attempt #2/i).first()).toBeVisible();
     await expect(page.getByText('+1.0')).toBeVisible();
 
-    // Verify branched chat link is displayed in the session header and in attempt #2
+    // Verify ChatGPT link is displayed in the topic links
     await expect(page.getByText(/ChatGPT Links Grouped for this Topic/i)).toBeVisible();
-    await expect(page.getByText(/Branched Chat/i).first()).toBeVisible();
-    await expect(page.getByText(branchUrl).first()).toBeVisible();
+    await expect(page.getByText(/ChatGPT Link/i).first()).toBeVisible();
+    await expect(page.getByText(secondUrl).first()).toBeVisible();
 
     // 5. Delete Attempt #2 and verify fallback to Attempt #1 (8.0/10)
     const deleteAttemptBtn = page.locator('button[title="Delete this practice attempt"]').first();
@@ -253,19 +253,31 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
 
     // 4. Verify link appears in the selected topic's grouped links list
     await expect(page.getByText(testUrl).first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/Primary Chat/i).first()).toBeVisible();
+    await expect(page.getByText(/ChatGPT Link #1/i).first()).toBeVisible();
 
-    // 5. Add a second (branch) ChatGPT link to the same selected topic
-    const branchUrl = `https://chatgpt.com/c/accom-branch-${Date.now()}`;
-    await page.locator('#chatgpt-link-input').fill(branchUrl);
+    // 5. Add a second ChatGPT link to the same selected topic
+    const secondAccomUrl = `https://chatgpt.com/c/accom-second-${Date.now()}`;
+    await page.locator('#chatgpt-link-input').fill(secondAccomUrl);
     await page.getByRole('button', { name: /Add Link to Topic/i }).click();
 
-    await expect(page.getByText(branchUrl).first()).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/Branch Chat/i).first()).toBeVisible();
+    await expect(page.getByText(secondAccomUrl).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/ChatGPT Link #2/i).first()).toBeVisible();
 
     // 6. Test copy button for the link
     const copyBtn = page.getByRole('button', { name: /Copy Link/i }).first();
     await copyBtn.click();
     await expect(page.getByText(/Copied/i).first()).toBeVisible();
+
+    // 7. Practice the second ChatGPT link multiple times with scores
+    const practiceSecondBtn = page.locator('button:has-text("Practice Here")').nth(1);
+    await practiceSecondBtn.click();
+    await expect(page.getByRole('heading', { name: /Record Practice Results/i })).toBeVisible();
+    await page.getByLabel(/Pass Count/i).fill('42');
+    await page.getByLabel(/Fail Count/i).fill('8');
+    await page.getByRole('button', { name: /Save Results/i }).click();
+    await expect(page.getByText(/Recorded practice results/i).first()).toBeVisible({ timeout: 5000 });
+
+    // Verify 8.4/10 score recorded on this link
+    await expect(page.getByText('8.4/10').first()).toBeVisible();
   });
 });

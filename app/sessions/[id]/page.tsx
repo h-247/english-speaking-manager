@@ -41,7 +41,6 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
-  GitBranch,
 } from 'lucide-react';
 
 export default function SessionDetailsPage({
@@ -212,9 +211,9 @@ export default function SessionDetailsPage({
                 </span>
               )}
               {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-950/70 text-purple-300 border border-purple-800/50 font-medium inline-flex items-center gap-1">
-                  <GitBranch className="w-3 h-3" />
-                  {session.allChatgptUrls.length} ChatGPT chats (branches)
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-950/70 text-blue-300 border border-blue-800/50 font-medium inline-flex items-center gap-1">
+                  <LinkIcon className="w-3 h-3 text-blue-400" />
+                  {session.allChatgptUrls.length} ChatGPT links
                 </span>
               )}
             </div>
@@ -253,7 +252,7 @@ export default function SessionDetailsPage({
                 </h3>
               </div>
               <p className="text-xs text-gray-400 mt-0.5">
-                All ChatGPT conversations and branches associated with this topic across practice attempts
+                All ChatGPT conversations associated with this topic across practice attempts
               </p>
             </div>
 
@@ -277,7 +276,6 @@ export default function SessionDetailsPage({
               ? session.groupedLinks
               : [{
                   url: session.chatgptUrl,
-                  isPrimary: true,
                   attemptNumbers: attempts.map((_, i) => attempts.length - i),
                   attemptCount: attempts.length,
                   bestScore: session.score,
@@ -290,16 +288,10 @@ export default function SessionDetailsPage({
               >
                 <div className="flex flex-col gap-1 min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {link.isPrimary ? (
-                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-950/70 text-blue-300 border border-blue-800/50 shrink-0">
-                        Main Chat
-                      </span>
-                    ) : (
-                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-800/50 shrink-0 inline-flex items-center gap-1">
-                        <GitBranch className="w-2.5 h-2.5" />
-                        Branch #{idx}
-                      </span>
-                    )}
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#2a2a2a] text-blue-300 border border-[#444444] shrink-0 inline-flex items-center gap-1">
+                      <LinkIcon className="w-3 h-3 text-blue-400" />
+                      Link #{idx + 1}
+                    </span>
 
                     <a
                       href={link.url}
@@ -631,21 +623,14 @@ export default function SessionDetailsPage({
                     </div>
                   </div>
 
-                  {/* Attempt's ChatGPT Link / Branch */}
+                  {/* Attempt's ChatGPT Link */}
                   {attempt.chatgptUrl && (
                     <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-[#141414] border border-[#2b2b2b] text-xs">
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        {attempt.chatgptUrl !== session.chatgptUrl ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-950/70 text-purple-300 border border-purple-800/50 shrink-0">
-                            <GitBranch className="w-3 h-3" />
-                            Branched Chat
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#262626] text-gray-400 border border-[#333] shrink-0">
-                            <LinkIcon className="w-3 h-3" />
-                            Main Chat
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#262626] text-blue-300 border border-[#383838] shrink-0">
+                          <LinkIcon className="w-3 h-3 text-blue-400" />
+                          ChatGPT Link
+                        </span>
                         <a
                           href={attempt.chatgptUrl}
                           target="_blank"
@@ -730,7 +715,7 @@ export default function SessionDetailsPage({
           setAddLinkError('');
         }}
         title="Add ChatGPT Link to Topic"
-        description={`Associate an additional ChatGPT conversation or branched link with "${session.topic}".`}
+        description={`Associate an additional ChatGPT conversation link with "${session.topic}".`}
         maxWidth="md"
       >
         <form onSubmit={handleConfirmAddLink} className="space-y-4">
@@ -745,7 +730,7 @@ export default function SessionDetailsPage({
               setAddLinkError('');
             }}
             error={addLinkError}
-            helperText="Paste the link to the ChatGPT chat or branch you want to group under this topic."
+            helperText="Paste the link to the ChatGPT conversation you want to group under this topic."
           />
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#383838]">

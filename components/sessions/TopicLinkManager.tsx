@@ -29,7 +29,6 @@ import {
   Check,
   Plus,
   Trash2,
-  GitBranch,
   Link as LinkIcon,
   MessageSquare,
   Award,
@@ -588,7 +587,7 @@ export function TopicLinkManager({
             )}
 
             <p className="text-[11px] text-gray-500">
-              Paste the URL of your 5-minute B2 practice chat with the English Speaking Coach prompt. You can save multiple chat branches or repeat sessions for this topic.
+              Paste the URL of your 5-minute B2 practice chat with the English Speaking Coach prompt. You can save multiple ChatGPT links for this topic and practice each link multiple times.
             </p>
           </form>
         </div>
@@ -631,6 +630,10 @@ export function TopicLinkManager({
             <div className="grid grid-cols-1 gap-3">
               {linksToDisplay.map((link, idx) => {
                 const isCopied = copiedUrl === link.url;
+                const linkAttempts = attemptsToDisplay.filter((att) => {
+                  const attUrl = att.chatgptUrl || activeSession?.chatgptUrl;
+                  return attUrl?.toLowerCase() === link.url.toLowerCase();
+                });
 
                 return (
                   <div
@@ -639,17 +642,10 @@ export function TopicLinkManager({
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        {link.isPrimary ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-950/80 text-blue-300 border border-blue-800/60 shrink-0">
-                            <Sparkles className="w-3 h-3 text-blue-400" />
-                            Primary Chat
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-neutral-800 text-gray-300 border border-neutral-700 shrink-0">
-                            <GitBranch className="w-3 h-3 text-purple-400" />
-                            Branch Chat
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-[#2a2a2a] text-blue-300 border border-[#444444] shrink-0">
+                          <LinkIcon className="w-3 h-3 text-blue-400" />
+                          ChatGPT Link #{idx + 1}
+                        </span>
 
                         <span className="text-xs font-mono text-gray-300 truncate max-w-sm sm:max-w-md lg:max-w-lg select-all">
                           {link.url}
@@ -658,9 +654,9 @@ export function TopicLinkManager({
 
                       {/* Performance indicators */}
                       <div className="flex items-center gap-2 shrink-0">
-                        {link.attemptCount > 0 ? (
+                        {linkAttempts.length > 0 ? (
                           <span className="text-xs text-gray-400">
-                            <b className="text-gray-200">{link.attemptCount}</b> attempt(s)
+                            <b className="text-gray-200">{linkAttempts.length}</b> attempt(s)
                             {link.bestScore !== null && (
                               <span className="ml-1.5 text-emerald-400 font-bold">
                                 · Best: {link.bestScore.toFixed(1)}/10
@@ -720,12 +716,12 @@ export function TopicLinkManager({
                           </Button>
                         )}
 
-                        {!link.isPrimary && (
+                        {linksToDisplay.length > 1 && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => setLinkToDelete(link.url)}
-                            title="Remove this branch link"
+                            title="Remove this ChatGPT link"
                             className="text-xs text-red-400 hover:text-red-300"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -733,6 +729,60 @@ export function TopicLinkManager({
                         )}
                       </div>
                     </div>
+
+                    {/* Each ChatGPT link shows its practice attempts and scores */}
+                    {linkAttempts.length > 0 ? (
+                      <div className="pt-2.5 border-t border-[#2a2a2a] space-y-2">
+                        <div className="flex items-center justify-between text-[11px] text-gray-400 font-semibold">
+                          <span>Practice Attempts on this link ({linkAttempts.length}):</span>
+                          {link.bestScore !== null && (
+                            <span className="text-emerald-400">Best: {link.bestScore.toFixed(1)}/10</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {linkAttempts.map((att, attIdx) => {
+                            const attemptNum = linkAttempts.length - attIdx;
+                            return (
+                              <div
+                                key={att.id}
+                                className="bg-[#242424] border border-[#333333] rounded-lg px-2.5 py-1.5 text-xs flex items-center justify-between"
+                              >
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold text-gray-200">Attempt #{attemptNum}</span>
+                                    <span className="font-bold text-emerald-400">{att.score.toFixed(1)}/10</span>
+                                  </div>
+                                  <div className="text-[10px] text-gray-400">
+                                    <span>{formatDate(att.practicedAt)}</span>
+                                    <span className="mx-1">·</span>
+                                    <span className="text-emerald-400">{att.passCount}P</span>
+                                    <span className="text-gray-500">/</span>
+                                    <span className="text-rose-400">{att.failCount}F</span>
+                                  </div>
+                                  {att.notes && (
+                                    <p className="text-[10px] text-gray-400 italic truncate max-w-[180px] mt-0.5">
+                                      {att.notes}
+                                    </p>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setAttemptToDelete(att.id)}
+                                  title="Delete this practice attempt"
+                                  className="text-gray-500 hover:text-red-400 p-1 rounded transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pt-2 border-t border-[#262626] flex items-center justify-between text-[11px] text-gray-500">
+                        <span>No practice attempts on this link yet. Click &quot;Practice Here&quot; to log your score.</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}

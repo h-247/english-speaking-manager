@@ -6,7 +6,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
 import { SessionItem } from '@/lib/api-client';
 import { formatDateShort } from '@/lib/format-date';
-import { ExternalLink, Copy, Edit2, Trash2, Award, GitBranch } from 'lucide-react';
+import { ExternalLink, Copy, Edit2, Trash2, Award, Link as LinkIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
 export interface SessionTableProps {
@@ -71,10 +71,10 @@ export function SessionTable({
                       </Link>
                       {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
                         <span
-                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-purple-950/60 text-purple-300 border border-purple-800/40 shrink-0"
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-950/60 text-blue-300 border border-blue-800/40 shrink-0"
                           title={`${session.allChatgptUrls.length} ChatGPT conversation links grouped under this topic`}
                         >
-                          <GitBranch className="w-2.5 h-2.5" />
+                          <LinkIcon className="w-2.5 h-2.5 text-blue-400" />
                           {session.allChatgptUrls.length} links
                         </span>
                       )}

@@ -8,7 +8,7 @@ import { calculateScore, formatScore } from '@/lib/scoring';
 import { recordResult } from '@/lib/api-client';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { useToast } from '@/components/ui/Toast';
-import { Trophy, CheckCircle, GitBranch, Link as LinkIcon } from 'lucide-react';
+import { Trophy, CheckCircle, Link as LinkIcon } from 'lucide-react';
 
 export interface RecordResultDialogProps {
   isOpen: boolean;
@@ -207,8 +207,8 @@ export function RecordResultDialog({
               ChatGPT Link for this Attempt
             </span>
             {chatgptUrl && (
-              <span className="text-[11px] text-gray-400 font-mono">
-                {chatgptUrl === session.chatgptUrl ? 'Main Chat' : 'Branched Chat'}
+              <span className="text-[11px] text-gray-400 font-mono truncate max-w-[200px]">
+                {chatgptUrl}
               </span>
             )}
           </div>
@@ -230,7 +230,7 @@ export function RecordResultDialog({
                       : 'bg-[#222222] text-gray-400 border-[#383838] hover:text-white'
                   }`}
                 >
-                  {url === session.chatgptUrl ? 'Main Chat' : `Branch #${idx}`}
+                  Link #{idx + 1}
                 </button>
               ))}
             </div>
@@ -238,7 +238,7 @@ export function RecordResultDialog({
 
           <Input
             id="chatgptBranchUrl"
-            label="ChatGPT Conversation URL / Branch Link"
+            label="ChatGPT Conversation URL"
             type="url"
             placeholder={session.chatgptUrl ? `${session.chatgptUrl} (leave empty to use this)` : 'https://chatgpt.com/c/...'}
             value={chatgptUrl}
@@ -247,7 +247,7 @@ export function RecordResultDialog({
               setErrors((prev) => ({ ...prev, chatgptUrl: undefined }));
             }}
             error={errors.chatgptUrl}
-            helperText="The ChatGPT conversation link where this attempt was practiced (e.g. from 'Branch in new chat')."
+            helperText="The ChatGPT conversation link where this practice attempt was conducted."
           />
         </div>
 

@@ -17,7 +17,6 @@ import {
   CheckCircle,
   Tag,
   ArrowRight,
-  GitBranch,
   Link as LinkIcon,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
@@ -65,14 +64,14 @@ export function SessionCard({
               </span>
             )}
             {session.allChatgptUrls && session.allChatgptUrls.length > 1 ? (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-950/60 text-purple-300 border border-purple-800/40 font-medium inline-flex items-center gap-1">
-                <GitBranch className="w-3 h-3" />
-                {session.allChatgptUrls.length} links grouped
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-950/60 text-blue-300 border border-blue-800/40 font-medium inline-flex items-center gap-1">
+                <LinkIcon className="w-3 h-3 text-blue-400" />
+                {session.allChatgptUrls.length} ChatGPT links
               </span>
             ) : (
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#1e1e1e] text-gray-400 border border-[#333] font-medium inline-flex items-center gap-1">
-                <LinkIcon className="w-3 h-3" />
-                1 link
+                <LinkIcon className="w-3 h-3 text-blue-400" />
+                1 ChatGPT link
               </span>
             )}
           </div>

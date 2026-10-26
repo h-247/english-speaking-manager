@@ -189,8 +189,8 @@ export class SessionService {
       string,
       {
         url: string;
-        isPrimary: boolean;
         attemptNumbers: number[];
+        attempts: typeof attempts;
         bestScore: number | null;
         latestPracticedAt: string | null;
       }
@@ -199,8 +199,8 @@ export class SessionService {
     if (deserialized.chatgptUrl) {
       linkMap.set(deserialized.chatgptUrl, {
         url: deserialized.chatgptUrl,
-        isPrimary: true,
         attemptNumbers: [],
+        attempts: [],
         bestScore: null,
         latestPracticedAt: deserialized.practicedAt || null,
       });
@@ -210,8 +210,8 @@ export class SessionService {
       if (b && !linkMap.has(b)) {
         linkMap.set(b, {
           url: b,
-          isPrimary: false,
           attemptNumbers: [],
+          attempts: [],
           bestScore: null,
           latestPracticedAt: null,
         });
@@ -226,14 +226,15 @@ export class SessionService {
         if (!entry) {
           entry = {
             url: attUrl,
-            isPrimary: attUrl === deserialized.chatgptUrl,
             attemptNumbers: [],
+            attempts: [],
             bestScore: null,
             latestPracticedAt: null,
           };
           linkMap.set(attUrl, entry);
         }
         entry.attemptNumbers.push(attNum);
+        entry.attempts.push(att);
         if (entry.bestScore === null || att.score > entry.bestScore) {
           entry.bestScore = att.score;
         }

@@ -8,11 +8,12 @@ import {
 
 export interface TopicGroupedLink {
   url: string;
-  isPrimary: boolean;
+  isPrimary?: boolean;
   attemptNumbers: number[];
   attemptCount: number;
   bestScore: number | null;
   latestPracticedAt: string | null;
+  attempts?: PracticeAttemptItem[];
 }
 
 export interface PracticeAttemptItem {
@@ -228,6 +229,14 @@ export async function removeTopicLink(
 ): Promise<SessionItem> {
   const current = await fetchSession(sessionId);
   const existing = current.branchUrls || [];
+  if (current.chatgptUrl === chatgptUrl) {
+    if (existing.length > 0) {
+      return updateSession(sessionId, {
+        chatgptUrl: existing[0],
+        branchUrls: existing.slice(1),
+      });
+    }
+  }
   return updateSession(sessionId, {
     branchUrls: existing.filter((u) => u !== chatgptUrl),
   });

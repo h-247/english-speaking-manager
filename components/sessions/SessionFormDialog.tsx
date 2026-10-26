@@ -221,7 +221,7 @@ export function SessionFormDialog({
           }}
           onBlur={handleUrlBlur}
           error={errors.chatgptUrl}
-          helperText="ChatGPT conversation link for this topic (branches & other links can be added per practice attempt)"
+          helperText="ChatGPT conversation link for this topic (more practice links can be added anytime)"
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

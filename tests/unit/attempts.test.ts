@@ -32,26 +32,26 @@ describe('createAttemptSchema', () => {
     expect(createAttemptSchema.safeParse({ passCount: 45, failCount: 1.5 }).success).toBe(false);
   });
 
-  it('allows optional notes, practicedAt, and valid branched chatgptUrl', () => {
-    const withBranch = {
+  it('allows optional notes, practicedAt, and valid chatgptUrl', () => {
+    const withLink = {
       passCount: 40,
       failCount: 10,
-      chatgptUrl: 'https://chatgpt.com/c/branch-test-12345',
+      chatgptUrl: 'https://chatgpt.com/c/link-test-12345',
     };
-    const res = createAttemptSchema.safeParse(withBranch);
+    const res = createAttemptSchema.safeParse(withLink);
     expect(res.success).toBe(true);
     if (res.success) {
-      expect(res.data.chatgptUrl).toBe('https://chatgpt.com/c/branch-test-12345');
+      expect(res.data.chatgptUrl).toBe('https://chatgpt.com/c/link-test-12345');
     }
   });
 
-  it('rejects invalid ChatGPT branch link', () => {
-    const invalidBranch = {
+  it('rejects invalid ChatGPT link', () => {
+    const invalidLink = {
       passCount: 40,
       failCount: 10,
       chatgptUrl: 'https://malicious-site.com/c/fake-chat',
     };
-    const res = createAttemptSchema.safeParse(invalidBranch);
+    const res = createAttemptSchema.safeParse(invalidLink);
     expect(res.success).toBe(false);
   });
 });
