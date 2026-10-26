@@ -3,5 +3,5 @@
 import { TopicsPageContent } from '@/components/topics/TopicsPageContent';
 
 export default function TopicsPage() {
-  return <TopicsPageContent />;
+  return <TopicsPageContent defaultTab="workspace" />;
 }

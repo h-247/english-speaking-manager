@@ -293,7 +293,9 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await expect(
       page.getByRole('heading', { name: /Speaking Topics & Links/i }),
     ).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/Topics Overview \(CRUD\)/i)).toBeVisible();
+    const crudTab = page.getByRole('button', { name: /Topics Overview \(CRUD\)/i });
+    await expect(crudTab).toBeVisible();
+    await crudTab.click();
 
     // 2. Add topic from CRUD page
     await page.getByRole('button', { name: /Add (Session|Topic)/i }).first().click();

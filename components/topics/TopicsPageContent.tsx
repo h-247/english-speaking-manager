@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 export function TopicsPageContent({
-  defaultTab = 'crud',
+  defaultTab = 'workspace',
 }: {
   defaultTab?: 'crud' | 'workspace';
 } = {}) {
@@ -41,7 +41,7 @@ export function TopicsPageContent({
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Active view tab: 'crud' (Topics Management) | 'workspace' (Practice Links Workspace)
+  // Active view tab: 'workspace' (Topic Selection & Practice Links) | 'crud' (Topics Management)
   const [activeTab, setActiveTab] = useState<'crud' | 'workspace'>(defaultTab);
 
   // Search and filter for the CRUD table
@@ -161,6 +161,19 @@ export function TopicsPageContent({
       <div className="flex items-center gap-2 border-b border-[#333333] pb-2">
         <button
           type="button"
+          onClick={() => setActiveTab('workspace')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            activeTab === 'workspace'
+              ? 'bg-[#2a2a2a] text-white border border-[#444444]'
+              : 'text-gray-400 hover:text-white hover:bg-[#222222]'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          Topic Selection & ChatGPT Links
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('crud')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
             activeTab === 'crud'
@@ -170,19 +183,6 @@ export function TopicsPageContent({
         >
           <Layers className="w-4 h-4 text-blue-400" />
           Topics Overview (CRUD)
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('workspace')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-            activeTab === 'workspace'
-              ? 'bg-[#2a2a2a] text-white border border-[#444444]'
-              : 'text-gray-400 hover:text-white hover:bg-[#222222]'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          Topic Links & Practice Workspace
         </button>
       </div>
 
