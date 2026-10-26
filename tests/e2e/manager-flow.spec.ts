@@ -107,7 +107,7 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
       await page.getByLabel(/Fail Count/i).fill('12');
 
       // Verify preview score is 8.0/10
-      await expect(page.getByText('8.0/10')).toBeVisible();
+      await expect(page.getByText('8.0/10').first()).toBeVisible();
 
       await page.getByRole('button', { name: /Save Results/i }).click();
       await expect(page.getByText(/Recorded practice results/i).first()).toBeVisible({

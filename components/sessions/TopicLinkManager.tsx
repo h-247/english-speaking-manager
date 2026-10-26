@@ -20,8 +20,10 @@ import {
   removeTopicLink,
   fetchSession,
   deleteAttempt,
+  recordResult,
 } from '@/lib/api-client';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
+import { calculateScore } from '@/lib/scoring';
 import { formatDate } from '@/lib/format-date';
 import { EditAttemptDialog } from '@/components/sessions/EditAttemptDialog';
 import { useToast } from '@/components/ui/Toast';
@@ -163,8 +165,14 @@ export function TopicLinkManager({
 
   // Add Link inline form states
   const [newLinkUrl, setNewLinkUrl] = useState('');
+  const [passCountStr, setPassCountStr] = useState('');
+  const [failCountStr, setFailCountStr] = useState('');
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [urlError, setUrlError] = useState('');
+
+  const passNum = passCountStr !== '' ? parseInt(passCountStr, 10) : null;
+  const failNum = failCountStr !== '' ? parseInt(failCountStr, 10) : null;
+  const calculatedScore = calculateScore(passNum, failNum);
 
   // Link deletion confirm states
   const [linkToDelete, setLinkToDelete] = useState<string | null>(null);
@@ -244,6 +252,14 @@ export function TopicLinkManager({
 
     const normalizedUrl = validation.normalizedUrl || trimmedUrl;
 
+    const hasScore =
+      passCountStr !== '' &&
+      failCountStr !== '' &&
+      Number.isInteger(Number(passCountStr)) &&
+      Number.isInteger(Number(failCountStr)) &&
+      Number(passCountStr) >= 0 &&
+      Number(failCountStr) >= 0;
+
     setIsAddingLink(true);
     try {
       if (activeSession) {
@@ -259,20 +275,41 @@ export function TopicLinkManager({
         }
 
         await addTopicLink(activeSession.id, normalizedUrl);
-        showSuccess(`Added ChatGPT link to "${activeTopic.name}".`);
+
+        if (hasScore) {
+          await recordResult(activeSession.id, {
+            passCount: Number(passCountStr),
+            failCount: Number(failCountStr),
+            chatgptUrl: normalizedUrl,
+            markCompleted: true,
+          });
+          showSuccess(
+            `Added ChatGPT link to "${activeTopic.name}" with score ${calculatedScore?.toFixed(1)}/10.`,
+          );
+        } else {
+          showSuccess(`Added ChatGPT link to "${activeTopic.name}".`);
+        }
       } else {
         // Topic does not exist in DB yet -> automatically create session with this topic!
         await createSession({
           topic: activeTopic.name,
           chatgptUrl: normalizedUrl,
-          status: 'IN_PROGRESS',
+          status: hasScore ? 'COMPLETED' : 'IN_PROGRESS',
           notes: activeTopic.description,
           tags: [activeTopic.name],
+          passCount: hasScore ? Number(passCountStr) : undefined,
+          failCount: hasScore ? Number(failCountStr) : undefined,
         });
-        showSuccess(`Created topic "${activeTopic.name}" with ChatGPT link.`);
+        showSuccess(
+          hasScore
+            ? `Created topic "${activeTopic.name}" with link and score ${calculatedScore?.toFixed(1)}/10.`
+            : `Created topic "${activeTopic.name}" with ChatGPT link.`,
+        );
       }
 
       setNewLinkUrl('');
+      setPassCountStr('');
+      setFailCountStr('');
       await onRefresh();
     } catch (err: any) {
       showError(err.message || 'Failed to add ChatGPT link.');
@@ -537,42 +574,130 @@ export function TopicLinkManager({
           </div>
         </div>
 
-        {/* Step 1: Add ChatGPT Link Form for Selected Topic */}
-        <div className="p-5 sm:p-6 border-b border-[#333333] bg-[#222222]/80">
-          <form onSubmit={handleAddLink} className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label
-                htmlFor="chatgpt-link-input"
-                className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5"
-              >
-                <LinkIcon className="w-3.5 h-3.5 text-blue-400" />
-                Add ChatGPT Link to {activeTopic.name}
-              </label>
+        {/* Step 1: Add Practice Form (Topic Selection + ChatGPT Link + Score) */}
+        <div className="p-5 sm:p-6 border-b border-[#333333] bg-[#222222]/80 space-y-4">
+          <form onSubmit={handleAddLink} className="space-y-4">
+            {/* Header: Topic Selection Dropdown & ChatGPT External link */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#2d2d2d]">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label
+                  htmlFor="topic-select-dropdown"
+                  className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5"
+                >
+                  <Layers className="w-3.5 h-3.5 text-amber-400" />
+                  Topic Selection:
+                </label>
+                <select
+                  id="topic-select-dropdown"
+                  aria-label="Choose Topic Selection"
+                  value={selectedTopicName}
+                  onChange={(e) => {
+                    setSelectedTopicName(e.target.value);
+                    setUrlError('');
+                  }}
+                  className="bg-[#171717] border border-[#3c3c3c] focus:border-white focus:ring-1 focus:ring-white rounded-lg px-2.5 py-1.5 text-xs text-[#ececec] font-semibold outline-none cursor-pointer"
+                >
+                  {combinedTopics.map((t) => (
+                    <option key={t.name} value={t.name}>
+                      {t.icon} {t.name} {t.session?.score !== null && t.session?.score !== undefined ? `· Score: ${t.session.score.toFixed(1)}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <a
                 href="https://chatgpt.com/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-blue-400 hover:underline flex items-center gap-1"
+                className="text-xs text-blue-400 hover:underline flex items-center gap-1 self-start sm:self-center"
               >
                 Open ChatGPT
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="flex-1 relative">
+            {/* ChatGPT Link Input */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="chatgpt-link-input"
+                className="text-xs font-semibold text-gray-300 flex items-center gap-1.5"
+              >
+                <LinkIcon className="w-3.5 h-3.5 text-blue-400" />
+                Add ChatGPT Link to {activeTopic.name}
+              </label>
+              <input
+                id="chatgpt-link-input"
+                type="url"
+                value={newLinkUrl}
+                onChange={(e) => {
+                  setNewLinkUrl(e.target.value);
+                  if (urlError) setUrlError('');
+                }}
+                placeholder="Paste ChatGPT conversation link (e.g. https://chatgpt.com/c/...)"
+                className="w-full bg-[#171717] border border-[#333333] focus:border-white focus:ring-1 focus:ring-white rounded-lg px-3.5 py-2.5 text-sm text-[#ececec] placeholder-gray-500 outline-none transition-colors"
+              />
+            </div>
+
+            {/* Score (Điểm số): Pass Sentences, Fail Sentences & Score Preview */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end bg-[#1b1b1b] p-3 rounded-lg border border-[#2e2e2e]">
+              <div>
+                <label
+                  htmlFor="practice-pass-input"
+                  className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider block mb-1"
+                >
+                  Pass Sentences
+                </label>
                 <input
-                  id="chatgpt-link-input"
-                  type="url"
-                  value={newLinkUrl}
-                  onChange={(e) => {
-                    setNewLinkUrl(e.target.value);
-                    if (urlError) setUrlError('');
-                  }}
-                  placeholder="Paste ChatGPT conversation link (e.g. https://chatgpt.com/c/...)"
-                  className="w-full bg-[#171717] border border-[#333333] focus:border-white focus:ring-1 focus:ring-white rounded-lg px-3.5 py-2.5 text-sm text-[#ececec] placeholder-gray-500 outline-none transition-colors"
+                  id="practice-pass-input"
+                  type="number"
+                  min="0"
+                  value={passCountStr}
+                  onChange={(e) => setPassCountStr(e.target.value)}
+                  placeholder="e.g. 40"
+                  className="w-full bg-[#141414] border border-[#383838] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg px-3 py-1.5 text-sm text-[#ececec] placeholder-gray-600 outline-none"
                 />
               </div>
+
+              <div>
+                <label
+                  htmlFor="practice-fail-input"
+                  className="text-[11px] font-semibold text-rose-400 uppercase tracking-wider block mb-1"
+                >
+                  Fail Sentences
+                </label>
+                <input
+                  id="practice-fail-input"
+                  type="number"
+                  min="0"
+                  value={failCountStr}
+                  onChange={(e) => setFailCountStr(e.target.value)}
+                  placeholder="e.g. 10"
+                  className="w-full bg-[#141414] border border-[#383838] focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-lg px-3 py-1.5 text-sm text-[#ececec] placeholder-gray-600 outline-none"
+                />
+              </div>
+
+              <div className="col-span-2 sm:col-span-1 flex items-center justify-between sm:justify-start gap-2 bg-[#121212] border border-[#333333] rounded-lg px-3 py-2">
+                <span className="text-xs text-gray-400 font-medium">Practice Score:</span>
+                {calculatedScore !== null ? (
+                  <span className="text-sm font-extrabold font-mono text-emerald-400">
+                    {calculatedScore.toFixed(1)}/10
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-500 font-mono">— / 10</span>
+                )}
+              </div>
+            </div>
+
+            {urlError && (
+              <p className="text-xs text-red-400 font-medium animate-in fade-in">
+                {urlError}
+              </p>
+            )}
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+              <p className="text-[11px] text-gray-500">
+                Topics are selections for each ChatGPT speaking practice. Each practice entry saves your chosen topic, conversation link, and practice score.
+              </p>
 
               <Button
                 type="submit"
@@ -585,16 +710,6 @@ export function TopicLinkManager({
                 Add Link to Topic
               </Button>
             </div>
-
-            {urlError && (
-              <p className="text-xs text-red-400 font-medium animate-in fade-in">
-                {urlError}
-              </p>
-            )}
-
-            <p className="text-[11px] text-gray-500">
-              Paste the URL of your 5-minute B2 practice chat with the English Speaking Coach prompt. You can save multiple ChatGPT links for this topic and practice each link multiple times.
-            </p>
           </form>
         </div>
 
