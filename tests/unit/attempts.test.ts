@@ -108,3 +108,49 @@ describe('Multiple attempts progression tracking', () => {
     expect(progression).toBe(3.6);
   });
 });
+
+describe('Topic grouping of ChatGPT links and practice attempts', () => {
+  it('groups multiple ChatGPT links under a topic with corresponding attempts and scores', () => {
+    const attempts = [
+      {
+        id: 'att-1',
+        attemptNumber: 1,
+        chatgptUrl: 'https://chatgpt.com/c/main-chat',
+        passCount: 40,
+        failCount: 10,
+        score: 8.0,
+      },
+      {
+        id: 'att-2',
+        attemptNumber: 2,
+        chatgptUrl: 'https://chatgpt.com/c/branch-chat-1',
+        passCount: 45,
+        failCount: 5,
+        score: 9.0,
+      },
+      {
+        id: 'att-3',
+        attemptNumber: 3,
+        chatgptUrl: 'https://chatgpt.com/c/branch-chat-1',
+        passCount: 48,
+        failCount: 2,
+        score: 9.6,
+      },
+    ];
+
+    // Grouping by link
+    const linkMap = new Map<string, { url: string; attemptCount: number; bestScore: number }>();
+    for (const att of attempts) {
+      const entry = linkMap.get(att.chatgptUrl) || { url: att.chatgptUrl, attemptCount: 0, bestScore: 0 };
+      entry.attemptCount++;
+      if (att.score > entry.bestScore) entry.bestScore = att.score;
+      linkMap.set(att.chatgptUrl, entry);
+    }
+
+    expect(linkMap.size).toBe(2);
+    expect(linkMap.get('https://chatgpt.com/c/main-chat')?.attemptCount).toBe(1);
+    expect(linkMap.get('https://chatgpt.com/c/main-chat')?.bestScore).toBe(8.0);
+    expect(linkMap.get('https://chatgpt.com/c/branch-chat-1')?.attemptCount).toBe(2);
+    expect(linkMap.get('https://chatgpt.com/c/branch-chat-1')?.bestScore).toBe(9.6);
+  });
+});

@@ -8,7 +8,7 @@ import { calculateScore, formatScore } from '@/lib/scoring';
 import { recordResult } from '@/lib/api-client';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { useToast } from '@/components/ui/Toast';
-import { Trophy, CheckCircle, GitBranch } from 'lucide-react';
+import { Trophy, CheckCircle, GitBranch, Link as LinkIcon } from 'lucide-react';
 
 export interface RecordResultDialogProps {
   isOpen: boolean;
@@ -17,10 +17,12 @@ export interface RecordResultDialogProps {
     id: string;
     topic: string;
     chatgptUrl?: string;
+    allChatgptUrls?: string[];
     passCount?: number | null;
     failCount?: number | null;
     practicedAt?: string | null;
   } | null;
+  initialUrl?: string;
   onSuccess: () => void;
 }
 
@@ -38,6 +40,7 @@ export function RecordResultDialog({
   isOpen,
   onClose,
   session,
+  initialUrl,
   onSuccess,
 }: RecordResultDialogProps) {
   const { showSuccess, showError } = useToast();
@@ -64,11 +67,11 @@ export function RecordResultDialog({
       );
       setPracticedDate(toLocalDatetimeInputValue(new Date()));
       setNotes('');
-      setChatgptUrl('');
+      setChatgptUrl(initialUrl || '');
       setMarkCompleted(true);
       setErrors({});
     }
-  }, [session, isOpen]);
+  }, [session, isOpen, initialUrl]);
 
   if (!session) return null;
 
@@ -196,19 +199,57 @@ export function RecordResultDialog({
           helperText="Timezone: Asia/Ho_Chi_Minh"
         />
 
-        <Input
-          label="ChatGPT Branch Link (Optional)"
-          id="chatgptBranchUrl"
-          type="url"
-          placeholder="https://chatgpt.com/c/... (leave empty to use session chat)"
-          value={chatgptUrl}
-          onChange={(e) => {
-            setChatgptUrl(e.target.value);
-            setErrors((prev) => ({ ...prev, chatgptUrl: undefined }));
-          }}
-          error={errors.chatgptUrl}
-          helperText="If you used ChatGPT's 'Branch in new chat' for this attempt, paste the branched chat URL here."
-        />
+        {/* Corresponding ChatGPT Link for this practice attempt */}
+        <div className="space-y-2 p-3 rounded-lg bg-[#1a1a1a] border border-[#383838]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+              <LinkIcon className="w-3.5 h-3.5 text-blue-400" />
+              ChatGPT Link for this Attempt
+            </span>
+            {chatgptUrl && (
+              <span className="text-[11px] text-gray-400 font-mono">
+                {chatgptUrl === session.chatgptUrl ? 'Main Chat' : 'Branched Chat'}
+              </span>
+            )}
+          </div>
+
+          {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap pb-1">
+              <span className="text-[11px] text-gray-500">Quick select:</span>
+              {session.allChatgptUrls.map((url, idx) => (
+                <button
+                  type="button"
+                  key={url}
+                  onClick={() => {
+                    setChatgptUrl(url);
+                    setErrors((prev) => ({ ...prev, chatgptUrl: undefined }));
+                  }}
+                  className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                    chatgptUrl === url || (!chatgptUrl && url === session.chatgptUrl)
+                      ? 'bg-blue-950 text-blue-300 border-blue-700/60 font-semibold'
+                      : 'bg-[#222222] text-gray-400 border-[#383838] hover:text-white'
+                  }`}
+                >
+                  {url === session.chatgptUrl ? 'Main Chat' : `Branch #${idx}`}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <Input
+            id="chatgptBranchUrl"
+            label="ChatGPT Conversation URL / Branch Link"
+            type="url"
+            placeholder={session.chatgptUrl ? `${session.chatgptUrl} (leave empty to use this)` : 'https://chatgpt.com/c/...'}
+            value={chatgptUrl}
+            onChange={(e) => {
+              setChatgptUrl(e.target.value);
+              setErrors((prev) => ({ ...prev, chatgptUrl: undefined }));
+            }}
+            error={errors.chatgptUrl}
+            helperText="The ChatGPT conversation link where this attempt was practiced (e.g. from 'Branch in new chat')."
+          />
+        </div>
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="attemptNotes" className="text-xs font-semibold text-gray-300">

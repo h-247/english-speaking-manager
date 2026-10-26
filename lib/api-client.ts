@@ -6,6 +6,15 @@ import {
   ImportPayload,
 } from '@/lib/validation';
 
+export interface TopicGroupedLink {
+  url: string;
+  isPrimary: boolean;
+  attemptNumbers: number[];
+  attemptCount: number;
+  bestScore: number | null;
+  latestPracticedAt: string | null;
+}
+
 export interface PracticeAttemptItem {
   id: string;
   sessionId: string;
@@ -27,6 +36,7 @@ export interface SessionItem {
   normalizedUrl: string;
   branchUrls?: string[];
   allChatgptUrls?: string[];
+  groupedLinks?: TopicGroupedLink[];
   status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
   notes: string | null;
   tags: string[];
@@ -196,6 +206,20 @@ export async function deleteAttempt(
     const err: any = await res.json().catch(() => ({}));
     throw new Error(err.error || 'Failed to delete practice attempt');
   }
+}
+
+export async function addTopicLink(
+  sessionId: string,
+  chatgptUrl: string,
+): Promise<SessionItem> {
+  const current = await fetchSession(sessionId);
+  const existing = current.branchUrls || [];
+  if (!existing.includes(chatgptUrl) && chatgptUrl !== current.chatgptUrl) {
+    return updateSession(sessionId, {
+      branchUrls: [...existing, chatgptUrl],
+    });
+  }
+  return current;
 }
 
 export async function importSessions(payload: ImportPayload) {

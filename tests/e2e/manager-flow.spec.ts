@@ -178,7 +178,7 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await expect(page.getByText(/Recorded practice results/i)).toBeVisible({ timeout: 5000 });
 
     // Verify Attempt #1 appears
-    await expect(page.getByText(/Attempt #1/i)).toBeVisible();
+    await expect(page.getByText(/Attempt #1/i).first()).toBeVisible();
     await expect(page.getByText('8.0/10').first()).toBeVisible();
 
     // 4. Log Attempt #2 with a branched ChatGPT URL (45 Pass, 5 Fail => 9.0/10)
@@ -186,17 +186,17 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await page.getByRole('button', { name: /Log Practice Attempt/i }).click();
     await page.getByLabel(/Pass Count/i).fill('45');
     await page.getByLabel(/Fail Count/i).fill('5');
-    await page.getByLabel(/ChatGPT Branch Link/i).fill(branchUrl);
+    await page.getByLabel(/ChatGPT (Conversation URL|Branch Link)/i).fill(branchUrl);
     await page.getByRole('button', { name: /Save Results/i }).click();
     await expect(page.getByText(/Recorded practice results/i)).toBeVisible({ timeout: 5000 });
 
     // Verify 2 attempts, Progression shows +1.0, and Latest Score is 9.0/10
     await expect(page.getByText(/2 practice attempts/i).first()).toBeVisible();
-    await expect(page.getByText(/Attempt #2/i)).toBeVisible();
+    await expect(page.getByText(/Attempt #2/i).first()).toBeVisible();
     await expect(page.getByText('+1.0')).toBeVisible();
 
     // Verify branched chat link is displayed in the session header and in attempt #2
-    await expect(page.getByText(/ChatGPT Links & Conversation Branches/i)).toBeVisible();
+    await expect(page.getByText(/ChatGPT Links Grouped for this Topic/i)).toBeVisible();
     await expect(page.getByText(/Branched Chat/i).first()).toBeVisible();
     await expect(page.getByText(branchUrl).first()).toBeVisible();
 
@@ -209,5 +209,26 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
 
     // Score should adjust back to 8.0/10
     await expect(page.getByText('8.0/10').first()).toBeVisible();
+
+    // 6. Test grouping ChatGPT links by topic: add link to topic and practice with it
+    const directTopicLink = `https://chatgpt.com/c/topic-grouped-link-${Date.now()}`;
+    await page.getByRole('button', { name: /Add ChatGPT Link/i }).click();
+    await expect(page.getByRole('heading', { name: /Add ChatGPT Link to Topic/i })).toBeVisible();
+    await page.getByLabel(/ChatGPT Conversation URL/i).fill(directTopicLink);
+    await page.getByRole('button', { name: /Add Link to Topic/i }).click();
+    await expect(page.getByText(/ChatGPT conversation link added/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(directTopicLink).first()).toBeVisible();
+
+    // Click "Practice Here" on that link
+    const practiceHereBtn = page.locator('button:has-text("Practice Here")').first();
+    await practiceHereBtn.click();
+    await expect(page.getByRole('heading', { name: /Record Practice Results/i })).toBeVisible();
+    await page.getByLabel(/Pass Count/i).fill('48');
+    await page.getByLabel(/Fail Count/i).fill('2');
+    await page.getByRole('button', { name: /Save Results/i }).click();
+    await expect(page.getByText(/Recorded practice results/i).first()).toBeVisible({ timeout: 5000 });
+
+    // Verify Attempt with corresponding link and 9.6/10 score
+    await expect(page.getByText('9.6/10').first()).toBeVisible();
   });
 });

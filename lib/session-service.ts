@@ -183,20 +183,81 @@ export class SessionService {
       .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt));
 
     const deserialized = deserializeSession(session);
-    const distinctUrls = new Set<string>();
-    if (deserialized.chatgptUrl) distinctUrls.add(deserialized.chatgptUrl);
+
+    // Group all ChatGPT links for this Topic with metadata
+    const linkMap = new Map<
+      string,
+      {
+        url: string;
+        isPrimary: boolean;
+        attemptNumbers: number[];
+        bestScore: number | null;
+        latestPracticedAt: string | null;
+      }
+    >();
+
+    if (deserialized.chatgptUrl) {
+      linkMap.set(deserialized.chatgptUrl, {
+        url: deserialized.chatgptUrl,
+        isPrimary: true,
+        attemptNumbers: [],
+        bestScore: null,
+        latestPracticedAt: deserialized.practicedAt || null,
+      });
+    }
+
     for (const b of deserialized.branchUrls) {
-      if (b) distinctUrls.add(b);
+      if (b && !linkMap.has(b)) {
+        linkMap.set(b, {
+          url: b,
+          isPrimary: false,
+          attemptNumbers: [],
+          bestScore: null,
+          latestPracticedAt: null,
+        });
+      }
     }
-    for (const a of attempts) {
-      if (a.chatgptUrl) distinctUrls.add(a.chatgptUrl);
-    }
+
+    attempts.forEach((att, index) => {
+      const attNum = attempts.length - index;
+      const attUrl = att.chatgptUrl || deserialized.chatgptUrl;
+      if (attUrl) {
+        let entry = linkMap.get(attUrl);
+        if (!entry) {
+          entry = {
+            url: attUrl,
+            isPrimary: attUrl === deserialized.chatgptUrl,
+            attemptNumbers: [],
+            bestScore: null,
+            latestPracticedAt: null,
+          };
+          linkMap.set(attUrl, entry);
+        }
+        entry.attemptNumbers.push(attNum);
+        if (entry.bestScore === null || att.score > entry.bestScore) {
+          entry.bestScore = att.score;
+        }
+        if (
+          !entry.latestPracticedAt ||
+          new Date(att.practicedAt).getTime() > new Date(entry.latestPracticedAt).getTime()
+        ) {
+          entry.latestPracticedAt = att.practicedAt;
+        }
+      }
+    });
+
+    const groupedLinks = Array.from(linkMap.values()).map((item) => ({
+      ...item,
+      attemptNumbers: item.attemptNumbers.sort((a, b) => a - b),
+      attemptCount: item.attemptNumbers.length,
+    }));
 
     return {
       ...deserialized,
       attempts,
       attemptCount: attempts.length > 0 ? attempts.length : session.score !== null ? 1 : 0,
-      allChatgptUrls: Array.from(distinctUrls),
+      allChatgptUrls: Array.from(linkMap.keys()),
+      groupedLinks,
     };
   }
 

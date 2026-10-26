@@ -9,13 +9,17 @@ import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
 import { SessionFormDialog } from '@/components/sessions/SessionFormDialog';
 import { RecordResultDialog } from '@/components/sessions/RecordResultDialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Dialog } from '@/components/ui/Dialog';
+import { Input } from '@/components/ui/Input';
 import { LoadingState } from '@/components/ui/LoadingState';
 import {
   fetchSession,
   deleteSession,
   deleteAttempt,
+  addTopicLink,
   SessionItem,
 } from '@/lib/api-client';
+import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { formatDate } from '@/lib/format-date';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -62,6 +66,13 @@ export default function SessionDetailsPage({
   // Attempt deletion states
   const [attemptToDelete, setAttemptToDelete] = useState<string | null>(null);
   const [isDeletingAttempt, setIsDeletingAttempt] = useState(false);
+
+  // Topic link management states
+  const [selectedUrlForAttempt, setSelectedUrlForAttempt] = useState<string | undefined>(undefined);
+  const [isAddLinkOpen, setIsAddLinkOpen] = useState(false);
+  const [newLinkInput, setNewLinkInput] = useState('');
+  const [addLinkError, setAddLinkError] = useState('');
+  const [isAddingLink, setIsAddingLink] = useState(false);
 
   const loadSession = useCallback(async () => {
     setIsLoading(true);
@@ -115,6 +126,31 @@ export default function SessionDetailsPage({
       showError(err.message || 'Failed to delete practice attempt.');
     } finally {
       setIsDeletingAttempt(false);
+    }
+  };
+
+  const handleConfirmAddLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session) return;
+    const trimmed = newLinkInput.trim();
+    const validation = validateChatGPTUrl(trimmed);
+    if (!validation.isValid) {
+      setAddLinkError(validation.error || 'Please enter a valid official HTTPS ChatGPT link.');
+      return;
+    }
+
+    setIsAddingLink(true);
+    try {
+      await addTopicLink(session.id, trimmed);
+      showSuccess('ChatGPT conversation link added to this topic.');
+      setIsAddLinkOpen(false);
+      setNewLinkInput('');
+      setAddLinkError('');
+      await loadSession();
+    } catch (err: any) {
+      setAddLinkError(err.message || 'Failed to add link to topic.');
+    } finally {
+      setIsAddingLink(false);
     }
   };
 
@@ -206,93 +242,131 @@ export default function SessionDetailsPage({
           </div>
         </div>
 
-        {/* ChatGPT Conversation Links (Supports Multiple Branches) */}
-        {session.allChatgptUrls && session.allChatgptUrls.length > 1 ? (
-          <div className="space-y-2.5 p-4 rounded-xl bg-[#1a1a1a] border border-[#383838]">
-            <div className="flex items-center justify-between text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              <span className="flex items-center gap-1.5 text-purple-400 font-bold">
-                <GitBranch className="w-3.5 h-3.5" />
-                ChatGPT Links & Conversation Branches ({session.allChatgptUrls.length})
-              </span>
-              <span className="text-[11px] text-gray-500 lowercase">
-                branched via ChatGPT &quot;Branch in new chat&quot;
-              </span>
-            </div>
-            <div className="space-y-2 pt-1">
-              {session.allChatgptUrls.map((url, idx) => {
-                const isOriginal = url === session.chatgptUrl;
-                return (
-                  <div
-                    key={url}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 rounded-lg bg-[#222222] border border-[#333333]"
-                  >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      {isOriginal ? (
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 border border-blue-800/40 shrink-0">
-                          Main Chat
-                        </span>
-                      ) : (
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-800/40 shrink-0 inline-flex items-center gap-1">
-                          <GitBranch className="w-2.5 h-2.5" />
-                          Branch #{idx}
-                        </span>
-                      )}
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-gray-300 hover:underline truncate"
-                        title={url}
-                      >
-                        {url}
-                      </a>
-                    </div>
-                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#2e2e2e] hover:bg-[#3d3d3d] text-xs font-medium text-gray-200 transition-colors"
-                      >
-                        <span>Open</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleCopyLink(url)}
-                        className="h-7 px-2 text-xs"
-                      >
-                        <Copy className="w-3 h-3 mr-1" />
-                        Copy
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3 p-3.5 rounded-lg bg-[#1a1a1a] border border-[#383838]">
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <LinkIcon className="w-4 h-4 text-gray-500 shrink-0" />
-              <a
-                href={session.chatgptUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs sm:text-sm text-gray-300 hover:underline truncate"
-                title={session.chatgptUrl}
-              >
-                {session.chatgptUrl}
-              </a>
+        {/* Grouped ChatGPT Links for this Topic */}
+        <div className="space-y-3 p-4 sm:p-5 rounded-xl bg-[#1a1a1a] border border-[#383838]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#2e2e2e] pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <LinkIcon className="w-4 h-4 text-blue-400" />
+                <h3 className="text-sm font-bold text-gray-200">
+                  ChatGPT Links Grouped for this Topic ({session.groupedLinks?.length || session.allChatgptUrls?.length || 1})
+                </h3>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                All ChatGPT conversations and branches associated with this topic across practice attempts
+              </p>
             </div>
 
-            <Button variant="outline" size="sm" onClick={() => handleCopyLink(session.chatgptUrl)}>
-              <Copy className="w-3.5 h-3.5 mr-1" />
-              Copy Link
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setNewLinkInput('');
+                setAddLinkError('');
+                setIsAddLinkOpen(true);
+              }}
+              className="h-8 px-2.5 text-xs text-blue-300 border-blue-900/60 hover:bg-blue-950/30 shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              Add ChatGPT Link
             </Button>
           </div>
-        )}
+
+          <div className="space-y-2 pt-1">
+            {(session.groupedLinks && session.groupedLinks.length > 0
+              ? session.groupedLinks
+              : [{
+                  url: session.chatgptUrl,
+                  isPrimary: true,
+                  attemptNumbers: attempts.map((_, i) => attempts.length - i),
+                  attemptCount: attempts.length,
+                  bestScore: session.score,
+                  latestPracticedAt: session.practicedAt,
+                }]
+            ).map((link, idx) => (
+              <div
+                key={link.url}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-[#222222] border border-[#333333] hover:border-[#444444] transition-all"
+              >
+                <div className="flex flex-col gap-1 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {link.isPrimary ? (
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-950/70 text-blue-300 border border-blue-800/50 shrink-0">
+                        Main Chat
+                      </span>
+                    ) : (
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-purple-950/70 text-purple-300 border border-purple-800/50 shrink-0 inline-flex items-center gap-1">
+                        <GitBranch className="w-2.5 h-2.5" />
+                        Branch #{idx}
+                      </span>
+                    )}
+
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs sm:text-sm text-gray-200 hover:text-white hover:underline truncate"
+                      title={link.url}
+                    >
+                      {link.url}
+                    </a>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-[11px] text-gray-400">
+                    <span>
+                      {link.attemptCount > 0 ? (
+                        <>
+                          Used in <b>{link.attemptCount} {link.attemptCount === 1 ? 'attempt' : 'attempts'}</b> (Attempt #{link.attemptNumbers.join(', #')})
+                        </>
+                      ) : (
+                        <span className="text-gray-500 italic">No attempts logged with this link yet</span>
+                      )}
+                    </span>
+                    {link.bestScore !== null && (
+                      <span className="text-emerald-400 font-mono font-medium">
+                        Best Score: {link.bestScore}/10
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedUrlForAttempt(link.url);
+                      setIsResultOpen(true);
+                    }}
+                    className="h-7 px-2 text-xs text-amber-400 border-amber-900/50 hover:bg-amber-950/20"
+                    title="Log a practice attempt using this ChatGPT link"
+                  >
+                    <Award className="w-3 h-3 mr-1" />
+                    Practice Here
+                  </Button>
+                  <a
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#2e2e2e] hover:bg-[#3d3d3d] text-xs font-medium text-gray-200 transition-colors"
+                  >
+                    <span>Open</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopyLink(link.url)}
+                    className="h-7 px-2 text-xs"
+                  >
+                    <Copy className="w-3 h-3 mr-1" />
+                    Copy
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Latest Practice Metrics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-[#333333]">
@@ -639,9 +713,57 @@ export default function SessionDetailsPage({
       <RecordResultDialog
         isOpen={isResultOpen}
         session={session}
-        onClose={() => setIsResultOpen(false)}
+        initialUrl={selectedUrlForAttempt}
+        onClose={() => {
+          setIsResultOpen(false);
+          setSelectedUrlForAttempt(undefined);
+        }}
         onSuccess={loadSession}
       />
+
+      {/* Dialog to Add a ChatGPT Link to this Topic */}
+      <Dialog
+        isOpen={isAddLinkOpen}
+        onClose={() => {
+          setIsAddLinkOpen(false);
+          setNewLinkInput('');
+          setAddLinkError('');
+        }}
+        title="Add ChatGPT Link to Topic"
+        description={`Associate an additional ChatGPT conversation or branched link with "${session.topic}".`}
+        maxWidth="md"
+      >
+        <form onSubmit={handleConfirmAddLink} className="space-y-4">
+          <Input
+            label="ChatGPT Conversation URL"
+            type="url"
+            required
+            placeholder="https://chatgpt.com/c/..."
+            value={newLinkInput}
+            onChange={(e) => {
+              setNewLinkInput(e.target.value);
+              setAddLinkError('');
+            }}
+            error={addLinkError}
+            helperText="Paste the link to the ChatGPT chat or branch you want to group under this topic."
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#383838]">
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => setIsAddLinkOpen(false)}
+              disabled={isAddingLink}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" type="submit" isLoading={isAddingLink}>
+              Add Link to Topic
+            </Button>
+          </div>
+        </form>
+      </Dialog>
 
       {/* Delete Full Session Dialog */}
       <ConfirmDialog

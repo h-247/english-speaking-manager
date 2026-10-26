@@ -72,10 +72,10 @@ export function SessionTable({
                       {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
                         <span
                           className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-purple-950/60 text-purple-300 border border-purple-800/40 shrink-0"
-                          title={`${session.allChatgptUrls.length} ChatGPT conversation links (branches)`}
+                          title={`${session.allChatgptUrls.length} ChatGPT conversation links grouped under this topic`}
                         >
                           <GitBranch className="w-2.5 h-2.5" />
-                          {session.allChatgptUrls.length} branches
+                          {session.allChatgptUrls.length} links
                         </span>
                       )}
                     </div>

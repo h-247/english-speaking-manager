@@ -180,8 +180,8 @@ export function SessionFormDialog({
       title={isEditing ? 'Edit Speaking Session' : 'Add Speaking Session'}
       description={
         isEditing
-          ? 'Update session details, ChatGPT link, or practice notes.'
-          : 'Save a new ChatGPT conversation link to practice speaking.'
+          ? 'Update topic details, ChatGPT link, or practice notes.'
+          : 'Save a new ChatGPT conversation link to practice speaking and group attempts by topic.'
       }
       maxWidth="lg"
     >
@@ -200,6 +200,7 @@ export function SessionFormDialog({
             });
           }}
           error={errors.topic}
+          helperText="The subject or presentation title for your speaking practice"
         />
 
         <Input
@@ -218,7 +219,7 @@ export function SessionFormDialog({
           }}
           onBlur={handleUrlBlur}
           error={errors.chatgptUrl}
-          helperText="Must be an official HTTPS link from chatgpt.com or chat.openai.com"
+          helperText="ChatGPT conversation link for this topic (branches & other links can be added per practice attempt)"
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
