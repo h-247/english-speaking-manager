@@ -14,6 +14,7 @@ export interface PracticeAttemptItem {
   failCount: number;
   score: number;
   notes: string | null;
+  chatgptUrl?: string | null;
   practicedAt: string;
   createdAt: string;
 }
@@ -24,6 +25,8 @@ export interface SessionItem {
   topic: string;
   chatgptUrl: string;
   normalizedUrl: string;
+  branchUrls?: string[];
+  allChatgptUrls?: string[];
   status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
   notes: string | null;
   tags: string[];

@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { calculateScore, formatScore } from '@/lib/scoring';
 import { recordResult } from '@/lib/api-client';
+import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { useToast } from '@/components/ui/Toast';
-import { Trophy, CheckCircle } from 'lucide-react';
+import { Trophy, CheckCircle, GitBranch } from 'lucide-react';
 
 export interface RecordResultDialogProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ export interface RecordResultDialogProps {
   session: {
     id: string;
     topic: string;
+    chatgptUrl?: string;
     passCount?: number | null;
     failCount?: number | null;
     practicedAt?: string | null;
@@ -43,9 +45,10 @@ export function RecordResultDialog({
   const [failCountStr, setFailCountStr] = useState<string>('');
   const [practicedDate, setPracticedDate] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
+  const [chatgptUrl, setChatgptUrl] = useState<string>('');
   const [markCompleted, setMarkCompleted] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState<{ pass?: string; fail?: string }>({});
+  const [errors, setErrors] = useState<{ pass?: string; fail?: string; chatgptUrl?: string }>({});
 
   useEffect(() => {
     if (session) {
@@ -61,6 +64,7 @@ export function RecordResultDialog({
       );
       setPracticedDate(toLocalDatetimeInputValue(new Date()));
       setNotes('');
+      setChatgptUrl('');
       setMarkCompleted(true);
       setErrors({});
     }
@@ -74,13 +78,19 @@ export function RecordResultDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: { pass?: string; fail?: string } = {};
+    const newErrors: { pass?: string; fail?: string; chatgptUrl?: string } = {};
 
     if (passCountStr === '' || isNaN(Number(passCountStr)) || Number(passCountStr) < 0) {
       newErrors.pass = 'Please enter a valid non-negative integer for Pass count.';
     }
     if (failCountStr === '' || isNaN(Number(failCountStr)) || Number(failCountStr) < 0) {
       newErrors.fail = 'Please enter a valid non-negative integer for Fail count.';
+    }
+    if (chatgptUrl.trim()) {
+      const validation = validateChatGPTUrl(chatgptUrl.trim());
+      if (!validation.isValid) {
+        newErrors.chatgptUrl = validation.error || 'Please enter a valid HTTPS ChatGPT link.';
+      }
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -97,6 +107,7 @@ export function RecordResultDialog({
         failCount: Number(failCountStr),
         practicedAt: isoPracticed,
         notes: notes.trim() || undefined,
+        chatgptUrl: chatgptUrl.trim() || undefined,
         markCompleted,
       });
 
@@ -183,6 +194,20 @@ export function RecordResultDialog({
           value={practicedDate}
           onChange={(e) => setPracticedDate(e.target.value)}
           helperText="Timezone: Asia/Ho_Chi_Minh"
+        />
+
+        <Input
+          label="ChatGPT Branch Link (Optional)"
+          id="chatgptBranchUrl"
+          type="url"
+          placeholder="https://chatgpt.com/c/... (leave empty to use session chat)"
+          value={chatgptUrl}
+          onChange={(e) => {
+            setChatgptUrl(e.target.value);
+            setErrors((prev) => ({ ...prev, chatgptUrl: undefined }));
+          }}
+          error={errors.chatgptUrl}
+          helperText="If you used ChatGPT's 'Branch in new chat' for this attempt, paste the branched chat URL here."
         />
 
         <div className="flex flex-col gap-1.5">

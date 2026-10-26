@@ -15,6 +15,13 @@
       "when": 1792985693390,
       "tag": "0001_lean_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792987772922,
+      "tag": "0002_fearless_mole_man",
+      "breakpoints": true
     }
   ]
 }

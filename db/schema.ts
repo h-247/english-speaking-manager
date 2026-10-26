@@ -18,6 +18,7 @@ export const practiceSessions = sqliteTable(
     topic: text('topic').notNull(),
     chatgptUrl: text('chatgpt_url').notNull(),
     normalizedUrl: text('normalized_url').notNull(),
+    branchUrls: text('branch_urls'), // JSON string array of branched ChatGPT links e.g. '["https://chatgpt.com/c/..."]'
     status: text('status', { enum: sessionStatusEnum }).notNull().default('PLANNED'),
     notes: text('notes'),
     tags: text('tags'), // JSON string array e.g. '["business","b2"]'
@@ -50,6 +51,7 @@ export const practiceAttempts = sqliteTable(
     failCount: integer('fail_count').notNull(),
     score: real('score').notNull(),
     notes: text('notes'),
+    chatgptUrl: text('chatgpt_url'), // Branched ChatGPT link specific to this practice attempt
     practicedAt: text('practiced_at').notNull(), // ISO 8601 string
     createdAt: text('created_at').notNull(), // ISO 8601 string
   },

@@ -181,10 +181,12 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await expect(page.getByText(/Attempt #1/i)).toBeVisible();
     await expect(page.getByText('8.0/10').first()).toBeVisible();
 
-    // 4. Log Attempt #2 (45 Pass, 5 Fail => 9.0/10)
+    // 4. Log Attempt #2 with a branched ChatGPT URL (45 Pass, 5 Fail => 9.0/10)
+    const branchUrl = `https://chatgpt.com/c/branch-${Date.now()}`;
     await page.getByRole('button', { name: /Log Practice Attempt/i }).click();
     await page.getByLabel(/Pass Count/i).fill('45');
     await page.getByLabel(/Fail Count/i).fill('5');
+    await page.getByLabel(/ChatGPT Branch Link/i).fill(branchUrl);
     await page.getByRole('button', { name: /Save Results/i }).click();
     await expect(page.getByText(/Recorded practice results/i)).toBeVisible({ timeout: 5000 });
 
@@ -192,6 +194,11 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     await expect(page.getByText(/2 practice attempts/i).first()).toBeVisible();
     await expect(page.getByText(/Attempt #2/i)).toBeVisible();
     await expect(page.getByText('+1.0')).toBeVisible();
+
+    // Verify branched chat link is displayed in the session header and in attempt #2
+    await expect(page.getByText(/ChatGPT Links & Conversation Branches/i)).toBeVisible();
+    await expect(page.getByText(/Branched Chat/i).first()).toBeVisible();
+    await expect(page.getByText(branchUrl).first()).toBeVisible();
 
     // 5. Delete Attempt #2 and verify fallback to Attempt #1 (8.0/10)
     const deleteAttemptBtn = page.locator('button[title="Delete this practice attempt"]').first();

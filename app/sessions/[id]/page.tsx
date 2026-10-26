@@ -37,6 +37,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  GitBranch,
 } from 'lucide-react';
 
 export default function SessionDetailsPage({
@@ -78,10 +79,11 @@ export default function SessionDetailsPage({
     loadSession();
   }, [loadSession]);
 
-  const handleCopyLink = async () => {
-    if (!session) return;
+  const handleCopyLink = async (urlToCopy?: string) => {
+    const url = urlToCopy || session?.chatgptUrl;
+    if (!url) return;
     try {
-      await navigator.clipboard.writeText(session.chatgptUrl);
+      await navigator.clipboard.writeText(url);
       showSuccess('ChatGPT conversation link copied to clipboard.');
     } catch {
       showError('Failed to copy link.');
@@ -140,6 +142,7 @@ export default function SessionDetailsPage({
   const isUnfinished = session.status === 'PLANNED' || session.status === 'IN_PROGRESS';
   const attempts = session.attempts || [];
   const latestAttempt = attempts[0];
+  const activeChatgptUrl = latestAttempt?.chatgptUrl || session.chatgptUrl;
   const firstAttempt = attempts[attempts.length - 1];
   const bestScore = attempts.length > 0 ? Math.max(...attempts.map((a) => a.score)) : null;
   const scoreDiff =
@@ -172,6 +175,12 @@ export default function SessionDetailsPage({
                   {attempts.length} {attempts.length === 1 ? 'practice attempt' : 'practice attempts'}
                 </span>
               )}
+              {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-950/70 text-purple-300 border border-purple-800/50 font-medium inline-flex items-center gap-1">
+                  <GitBranch className="w-3 h-3" />
+                  {session.allChatgptUrls.length} ChatGPT chats (branches)
+                </span>
+              )}
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#ececec] tracking-tight">
               {session.topic}
@@ -181,7 +190,7 @@ export default function SessionDetailsPage({
           {/* Primary Action Button */}
           <div className="flex items-center gap-2">
             <a
-              href={session.chatgptUrl}
+              href={activeChatgptUrl}
               target="_blank"
               rel="noopener noreferrer"
               className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-md select-none ${
@@ -197,26 +206,93 @@ export default function SessionDetailsPage({
           </div>
         </div>
 
-        {/* ChatGPT Link Bar */}
-        <div className="flex items-center justify-between gap-3 p-3.5 rounded-lg bg-[#1a1a1a] border border-[#383838]">
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <LinkIcon className="w-4 h-4 text-gray-500 shrink-0" />
-            <a
-              href={session.chatgptUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs sm:text-sm text-gray-300 hover:underline truncate"
-              title={session.chatgptUrl}
-            >
-              {session.chatgptUrl}
-            </a>
+        {/* ChatGPT Conversation Links (Supports Multiple Branches) */}
+        {session.allChatgptUrls && session.allChatgptUrls.length > 1 ? (
+          <div className="space-y-2.5 p-4 rounded-xl bg-[#1a1a1a] border border-[#383838]">
+            <div className="flex items-center justify-between text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <span className="flex items-center gap-1.5 text-purple-400 font-bold">
+                <GitBranch className="w-3.5 h-3.5" />
+                ChatGPT Links & Conversation Branches ({session.allChatgptUrls.length})
+              </span>
+              <span className="text-[11px] text-gray-500 lowercase">
+                branched via ChatGPT &quot;Branch in new chat&quot;
+              </span>
+            </div>
+            <div className="space-y-2 pt-1">
+              {session.allChatgptUrls.map((url, idx) => {
+                const isOriginal = url === session.chatgptUrl;
+                return (
+                  <div
+                    key={url}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 rounded-lg bg-[#222222] border border-[#333333]"
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {isOriginal ? (
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 border border-blue-800/40 shrink-0">
+                          Main Chat
+                        </span>
+                      ) : (
+                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-purple-950/60 text-purple-300 border border-purple-800/40 shrink-0 inline-flex items-center gap-1">
+                          <GitBranch className="w-2.5 h-2.5" />
+                          Branch #{idx}
+                        </span>
+                      )}
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-gray-300 hover:underline truncate"
+                        title={url}
+                      >
+                        {url}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#2e2e2e] hover:bg-[#3d3d3d] text-xs font-medium text-gray-200 transition-colors"
+                      >
+                        <span>Open</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCopyLink(url)}
+                        className="h-7 px-2 text-xs"
+                      >
+                        <Copy className="w-3 h-3 mr-1" />
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3 p-3.5 rounded-lg bg-[#1a1a1a] border border-[#383838]">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <LinkIcon className="w-4 h-4 text-gray-500 shrink-0" />
+              <a
+                href={session.chatgptUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs sm:text-sm text-gray-300 hover:underline truncate"
+                title={session.chatgptUrl}
+              >
+                {session.chatgptUrl}
+              </a>
+            </div>
 
-          <Button variant="outline" size="sm" onClick={handleCopyLink}>
-            <Copy className="w-3.5 h-3.5 mr-1" />
-            Copy Link
-          </Button>
-        </div>
+            <Button variant="outline" size="sm" onClick={() => handleCopyLink(session.chatgptUrl)}>
+              <Copy className="w-3.5 h-3.5 mr-1" />
+              Copy Link
+            </Button>
+          </div>
+        )}
 
         {/* Latest Practice Metrics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-[#333333]">
@@ -480,6 +556,52 @@ export default function SessionDetailsPage({
                       <span className="font-mono font-bold text-gray-200">{accuracy}%</span>
                     </div>
                   </div>
+
+                  {/* Attempt's ChatGPT Link / Branch */}
+                  {attempt.chatgptUrl && (
+                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-[#141414] border border-[#2b2b2b] text-xs">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {attempt.chatgptUrl !== session.chatgptUrl ? (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-950/70 text-purple-300 border border-purple-800/50 shrink-0">
+                            <GitBranch className="w-3 h-3" />
+                            Branched Chat
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#262626] text-gray-400 border border-[#333] shrink-0">
+                            <LinkIcon className="w-3 h-3" />
+                            Main Chat
+                          </span>
+                        )}
+                        <a
+                          href={attempt.chatgptUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-gray-300 hover:text-white truncate hover:underline"
+                          title={attempt.chatgptUrl}
+                        >
+                          {attempt.chatgptUrl}
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <a
+                          href={attempt.chatgptUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#242424] hover:bg-[#333] text-gray-200 text-[11px] font-medium transition-colors"
+                        >
+                          <span>Open</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                        <button
+                          onClick={() => handleCopyLink(attempt.chatgptUrl!)}
+                          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2b2b2b] transition-colors"
+                          title="Copy conversation link"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {attempt.notes && (
                     <div className="text-xs text-gray-300 bg-[#171717] p-3 rounded-lg border border-[#2b2b2b] whitespace-pre-wrap">

@@ -32,13 +32,27 @@ describe('createAttemptSchema', () => {
     expect(createAttemptSchema.safeParse({ passCount: 45, failCount: 1.5 }).success).toBe(false);
   });
 
-  it('allows optional notes and practicedAt', () => {
-    const minimal = {
+  it('allows optional notes, practicedAt, and valid branched chatgptUrl', () => {
+    const withBranch = {
       passCount: 40,
       failCount: 10,
+      chatgptUrl: 'https://chatgpt.com/c/branch-test-12345',
     };
-    const res = createAttemptSchema.safeParse(minimal);
+    const res = createAttemptSchema.safeParse(withBranch);
     expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.chatgptUrl).toBe('https://chatgpt.com/c/branch-test-12345');
+    }
+  });
+
+  it('rejects invalid ChatGPT branch link', () => {
+    const invalidBranch = {
+      passCount: 40,
+      failCount: 10,
+      chatgptUrl: 'https://malicious-site.com/c/fake-chat',
+    };
+    const res = createAttemptSchema.safeParse(invalidBranch);
+    expect(res.success).toBe(false);
   });
 });
 

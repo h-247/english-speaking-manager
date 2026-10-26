@@ -18,6 +18,7 @@ export async function ensureDatabaseInitialized(): Promise<void> {
           topic TEXT NOT NULL,
           chatgpt_url TEXT NOT NULL,
           normalized_url TEXT NOT NULL,
+          branch_urls TEXT,
           status TEXT NOT NULL DEFAULT 'PLANNED',
           notes TEXT,
           tags TEXT,
@@ -39,10 +40,23 @@ export async function ensureDatabaseInitialized(): Promise<void> {
           fail_count INTEGER NOT NULL,
           score REAL NOT NULL,
           notes TEXT,
+          chatgpt_url TEXT,
           practiced_at TEXT NOT NULL,
           created_at TEXT NOT NULL
         );
       `);
+
+      // Safe column additions for existing databases
+      try {
+        await db.run(sql`ALTER TABLE practice_sessions ADD COLUMN branch_urls TEXT;`);
+      } catch {
+        // column already exists
+      }
+      try {
+        await db.run(sql`ALTER TABLE practice_attempts ADD COLUMN chatgpt_url TEXT;`);
+      } catch {
+        // column already exists
+      }
 
       await db.run(sql`
         CREATE TABLE IF NOT EXISTS custom_prompts (

@@ -25,6 +25,14 @@ export const createSessionSchema = z.object({
     .max(20, 'Maximum 20 tags allowed.')
     .optional()
     .default([]),
+  branchUrls: z
+    .array(
+      z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+        message: 'Branch URL must be a valid HTTPS ChatGPT link.',
+      }),
+    )
+    .max(50, 'Maximum 50 branch URLs allowed.')
+    .optional(),
   passCount: z
     .number()
     .int('Pass count must be a whole number.')
@@ -65,6 +73,14 @@ export const updateSessionSchema = z.object({
     .array(z.string().trim().min(1).max(50))
     .max(20, 'Maximum 20 tags allowed.')
     .optional(),
+  branchUrls: z
+    .array(
+      z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+        message: 'Branch URL must be a valid HTTPS ChatGPT link.',
+      }),
+    )
+    .max(50, 'Maximum 50 branch URLs allowed.')
+    .optional(),
   passCount: z
     .number()
     .int('Pass count must be a whole number.')
@@ -98,6 +114,14 @@ export const recordResultSchema = z.object({
     .datetime({ message: 'Practiced date must be a valid ISO 8601 timestamp.' })
     .optional(),
   notes: z.string().max(5000, 'Notes cannot exceed 5,000 characters.').optional().nullable(),
+  chatgptUrl: z
+    .string()
+    .trim()
+    .refine((url) => !url || validateChatGPTUrl(url).isValid, {
+      message: 'Branch link must be a valid HTTPS ChatGPT link.',
+    })
+    .optional()
+    .nullable(),
   markCompleted: z.boolean().optional().default(true),
 });
 
@@ -115,6 +139,14 @@ export const createAttemptSchema = z.object({
     .datetime({ message: 'Practiced date must be a valid ISO 8601 timestamp.' })
     .optional(),
   notes: z.string().max(5000, 'Notes cannot exceed 5,000 characters.').optional().nullable(),
+  chatgptUrl: z
+    .string()
+    .trim()
+    .refine((url) => !url || validateChatGPTUrl(url).isValid, {
+      message: 'Branch link must be a valid HTTPS ChatGPT link.',
+    })
+    .optional()
+    .nullable(),
   markCompleted: z.boolean().optional().default(true),
 });
 
@@ -123,6 +155,7 @@ export const practiceAttemptImportSchema = z.object({
   failCount: z.number().int().nonnegative(),
   score: z.number().optional().nullable(),
   notes: z.string().optional().nullable(),
+  chatgptUrl: z.string().optional().nullable(),
   practicedAt: z.string(),
   createdAt: z.string().optional().nullable(),
 });
@@ -132,6 +165,7 @@ export const sessionImportItemSchema = z.object({
   chatgptUrl: z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
     message: 'Valid HTTPS ChatGPT URL is required.',
   }),
+  branchUrls: z.union([z.array(z.string()), z.string()]).optional().nullable(),
   status: sessionStatusSchema.optional().default('PLANNED'),
   notes: z.string().optional().nullable(),
   tags: z.union([z.array(z.string()), z.string()]).optional().nullable(),

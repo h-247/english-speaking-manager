@@ -6,7 +6,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
 import { SessionItem } from '@/lib/api-client';
 import { formatDateShort } from '@/lib/format-date';
-import { ExternalLink, Copy, Edit2, Trash2, Award } from 'lucide-react';
+import { ExternalLink, Copy, Edit2, Trash2, Award, GitBranch } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
 export interface SessionTableProps {
@@ -61,13 +61,24 @@ export function SessionTable({
                 {/* Topic */}
                 <td className="py-3.5 px-4 max-w-xs sm:max-w-sm">
                   <div className="flex flex-col">
-                    <Link
-                      href={`/sessions/${session.id}`}
-                      className="font-semibold text-[#ececec] hover:underline truncate block"
-                      title={session.topic}
-                    >
-                      {session.topic}
-                    </Link>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Link
+                        href={`/sessions/${session.id}`}
+                        className="font-semibold text-[#ececec] hover:underline truncate block"
+                        title={session.topic}
+                      >
+                        {session.topic}
+                      </Link>
+                      {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
+                        <span
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-purple-950/60 text-purple-300 border border-purple-800/40 shrink-0"
+                          title={`${session.allChatgptUrls.length} ChatGPT conversation links (branches)`}
+                        >
+                          <GitBranch className="w-2.5 h-2.5" />
+                          {session.allChatgptUrls.length} branches
+                        </span>
+                      )}
+                    </div>
                     {session.notes && (
                       <span className="text-xs text-gray-400 truncate max-w-xs mt-0.5">
                         {session.notes}

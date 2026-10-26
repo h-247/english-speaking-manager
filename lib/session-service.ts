@@ -182,10 +182,21 @@ export class SessionService {
       )
       .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt));
 
+    const deserialized = deserializeSession(session);
+    const distinctUrls = new Set<string>();
+    if (deserialized.chatgptUrl) distinctUrls.add(deserialized.chatgptUrl);
+    for (const b of deserialized.branchUrls) {
+      if (b) distinctUrls.add(b);
+    }
+    for (const a of attempts) {
+      if (a.chatgptUrl) distinctUrls.add(a.chatgptUrl);
+    }
+
     return {
-      ...deserializeSession(session),
+      ...deserialized,
       attempts,
       attemptCount: attempts.length > 0 ? attempts.length : session.score !== null ? 1 : 0,
+      allChatgptUrls: Array.from(distinctUrls),
     };
   }
 
@@ -224,6 +235,10 @@ export class SessionService {
 
     const tagsJson =
       input.tags && input.tags.length > 0 ? JSON.stringify(input.tags) : null;
+    const branchUrlsJson =
+      input.branchUrls && input.branchUrls.length > 0
+        ? JSON.stringify(input.branchUrls)
+        : null;
 
     const newSession = {
       id,
@@ -231,6 +246,7 @@ export class SessionService {
       topic: input.topic.trim(),
       chatgptUrl: input.chatgptUrl.trim(),
       normalizedUrl,
+      branchUrls: branchUrlsJson,
       status: input.status ?? 'PLANNED',
       notes: input.notes?.trim() || null,
       tags: tagsJson,
@@ -254,6 +270,7 @@ export class SessionService {
         failCount: input.failCount,
         score,
         notes: input.notes?.trim() || null,
+        chatgptUrl: input.chatgptUrl.trim(),
         practicedAt: practicedAt || now,
         createdAt: now,
       });
@@ -336,6 +353,13 @@ export class SessionService {
     if (input.tags !== undefined) {
       updates.tags =
         input.tags && input.tags.length > 0 ? JSON.stringify(input.tags) : null;
+    }
+
+    if (input.branchUrls !== undefined) {
+      updates.branchUrls =
+        input.branchUrls && input.branchUrls.length > 0
+          ? JSON.stringify(input.branchUrls)
+          : null;
     }
 
     const newPass =
@@ -445,6 +469,7 @@ export class SessionService {
     const now = new Date().toISOString();
     const practicedAt = input.practicedAt || now;
     const attemptId = crypto.randomUUID();
+    const attemptChatgptUrl = input.chatgptUrl?.trim() || session.chatgptUrl;
 
     const newAttempt = {
       id: attemptId,
@@ -454,11 +479,29 @@ export class SessionService {
       failCount: input.failCount,
       score,
       notes: input.notes?.trim() || null,
+      chatgptUrl: attemptChatgptUrl,
       practicedAt,
       createdAt: now,
     };
 
     await db.insert(schema.practiceAttempts).values(newAttempt);
+
+    // If a new branched URL was used, add it to the session's branchUrls array
+    let currentBranches: string[] = [];
+    if (session.branchUrls) {
+      try {
+        currentBranches = JSON.parse(session.branchUrls);
+      } catch {
+        currentBranches = [];
+      }
+    }
+    if (
+      attemptChatgptUrl &&
+      attemptChatgptUrl !== session.chatgptUrl &&
+      !currentBranches.includes(attemptChatgptUrl)
+    ) {
+      currentBranches.push(attemptChatgptUrl);
+    }
 
     // Update parent session with latest attempt score, counts, practicedAt, status
     const newStatus = input.markCompleted
@@ -475,6 +518,7 @@ export class SessionService {
         score,
         practicedAt,
         status: newStatus,
+        branchUrls: currentBranches.length > 0 ? JSON.stringify(currentBranches) : session.branchUrls,
         updatedAt: now,
       })
       .where(
@@ -602,6 +646,7 @@ export class SessionService {
       failCount: input.failCount,
       practicedAt: input.practicedAt,
       notes: input.notes,
+      chatgptUrl: input.chatgptUrl,
       markCompleted: input.markCompleted,
     });
 
@@ -849,6 +894,10 @@ export class SessionService {
             .filter(Boolean);
         }
         const tagsJson = parsedTags.length > 0 ? JSON.stringify(parsedTags) : null;
+        const branchUrlsJson =
+          item.branchUrls && Array.isArray(item.branchUrls) && item.branchUrls.length > 0
+            ? JSON.stringify(item.branchUrls)
+            : null;
 
         const existingId = existingMap.get(normalizedUrl);
 
@@ -864,6 +913,7 @@ export class SessionService {
                 status: item.status ?? 'PLANNED',
                 notes: item.notes?.trim() || null,
                 tags: tagsJson,
+                branchUrls: branchUrlsJson,
                 passCount: item.passCount ?? null,
                 failCount: item.failCount ?? null,
                 score,
@@ -890,6 +940,7 @@ export class SessionService {
             topic: item.topic.trim(),
             chatgptUrl: item.chatgptUrl.trim(),
             normalizedUrl,
+            branchUrls: branchUrlsJson,
             status: item.status ?? 'PLANNED',
             notes: item.notes?.trim() || null,
             tags: tagsJson,
@@ -920,6 +971,7 @@ export class SessionService {
               failCount: att.failCount,
               score: attScore,
               notes: att.notes?.trim() || null,
+              chatgptUrl: att.chatgptUrl?.trim() || item.chatgptUrl.trim(),
               practicedAt: att.practicedAt || now,
               createdAt: att.createdAt || now,
             });
@@ -957,9 +1009,26 @@ function deserializeSession(row: any) {
     }
   }
 
+  let branchUrls: string[] = [];
+  if (row.branchUrls) {
+    try {
+      branchUrls = JSON.parse(row.branchUrls);
+    } catch {
+      branchUrls = [];
+    }
+  }
+
+  const distinctUrls = new Set<string>();
+  if (row.chatgptUrl) distinctUrls.add(row.chatgptUrl);
+  for (const b of branchUrls) {
+    if (b) distinctUrls.add(b);
+  }
+
   return {
     ...row,
     tags,
+    branchUrls,
+    allChatgptUrls: Array.from(distinctUrls),
   };
 }
 

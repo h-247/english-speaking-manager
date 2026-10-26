@@ -17,6 +17,7 @@ import {
   CheckCircle,
   Tag,
   ArrowRight,
+  GitBranch,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
@@ -60,6 +61,12 @@ export function SessionCard({
             {session.attemptCount !== undefined && session.attemptCount > 0 && (
               <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#1c2e42] text-sky-300 border border-sky-800/50 font-medium">
                 {session.attemptCount} {session.attemptCount === 1 ? 'attempt' : 'attempts'}
+              </span>
+            )}
+            {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-950/60 text-purple-300 border border-purple-800/40 font-medium inline-flex items-center gap-1">
+                <GitBranch className="w-3 h-3" />
+                {session.allChatgptUrls.length} branches
               </span>
             )}
           </div>
