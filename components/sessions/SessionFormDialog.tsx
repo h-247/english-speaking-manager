@@ -15,6 +15,7 @@ export interface SessionFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
   sessionToEdit?: SessionItem | null;
+  initialTopic?: string;
   onSuccess: () => void;
 }
 
@@ -22,6 +23,7 @@ export function SessionFormDialog({
   isOpen,
   onClose,
   sessionToEdit,
+  initialTopic,
   onSuccess,
 }: SessionFormDialogProps) {
   const { showSuccess, showError } = useToast();
@@ -62,7 +64,7 @@ export function SessionFormDialog({
           : '',
       );
     } else {
-      setTopic('');
+      setTopic(initialTopic || '');
       setChatgptUrl('');
       setStatus('PLANNED');
       setNotes('');
@@ -72,7 +74,7 @@ export function SessionFormDialog({
       setPracticedDate('');
     }
     setErrors({});
-  }, [sessionToEdit, isOpen]);
+  }, [sessionToEdit, isOpen, initialTopic]);
 
   const passNum = passCountStr !== '' ? parseInt(passCountStr, 10) : null;
   const failNum = failCountStr !== '' ? parseInt(failCountStr, 10) : null;

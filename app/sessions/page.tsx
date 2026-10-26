@@ -1,23 +1,23 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { FilterControls } from '@/components/sessions/FilterControls';
 import { SessionTable } from '@/components/sessions/SessionTable';
 import { SessionCard } from '@/components/sessions/SessionCard';
 import { SessionFormDialog } from '@/components/sessions/SessionFormDialog';
 import { RecordResultDialog } from '@/components/sessions/RecordResultDialog';
+import { TopicLinkManager } from '@/components/sessions/TopicLinkManager';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { fetchSessions, deleteSession, updateSession, SessionItem } from '@/lib/api-client';
 import { useToast } from '@/components/ui/Toast';
-import { Plus, Layers, SearchX } from 'lucide-react';
+import { Plus, Layers, SearchX, ListFilter } from 'lucide-react';
 
 export default function SessionsLibraryPage() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { showSuccess, showError } = useToast();
 
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -31,8 +31,10 @@ export default function SessionsLibraryPage() {
 
   // Dialog states
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [initialTopicForAdd, setInitialTopicForAdd] = useState<string | undefined>(undefined);
   const [editingSession, setEditingSession] = useState<SessionItem | null>(null);
   const [resultSession, setResultSession] = useState<SessionItem | null>(null);
+  const [selectedUrlForResult, setSelectedUrlForResult] = useState<string | undefined>(undefined);
   const [deletingSession, setDeletingSession] = useState<SessionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -91,10 +93,20 @@ export default function SessionsLibraryPage() {
     }
   };
 
+  const handleOpenAddWithTopic = (initialTopic?: string) => {
+    setInitialTopicForAdd(initialTopic);
+    setIsAddOpen(true);
+  };
+
+  const handleRecordResult = (session: SessionItem, initialUrl?: string) => {
+    setResultSession(session);
+    setSelectedUrlForResult(initialUrl);
+  };
+
   const hasActiveFilters = search.trim() !== '' || status !== 'ALL' || sortBy !== 'recently_updated';
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-150">
+    <div className="space-y-8 animate-in fade-in duration-150">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#333333]">
         <div>
@@ -102,91 +114,115 @@ export default function SessionsLibraryPage() {
             Sessions Library
           </h1>
           <p className="text-sm text-gray-400 mt-1">
-            Browse, manage, and resume all saved ChatGPT speaking conversations.
+            Browse speaking topics, manage ChatGPT links, and record practice results.
           </p>
         </div>
 
-        <Button variant="primary" size="sm" onClick={() => setIsAddOpen(true)}>
+        <Button variant="primary" size="sm" onClick={() => handleOpenAddWithTopic()}>
           <Plus className="w-4 h-4" />
           Add Session
         </Button>
       </div>
 
-      {/* Filter and Search Bar */}
-      <FilterControls
-        search={search}
-        onSearchChange={setSearch}
-        status={status}
-        onStatusChange={setStatus}
-        sortBy={sortBy}
-        onSortByChange={setSortBy}
-        onReset={handleResetFilters}
-        hasActiveFilters={hasActiveFilters}
-      />
+      {/* Part 1: Topics & ChatGPT Link Manager (1-page topic selection & link management) */}
+      <section aria-label="Speaking Practice Topics Hub">
+        <TopicLinkManager
+          sessions={sessions}
+          onRefresh={loadSessions}
+          onRecordResult={handleRecordResult}
+          onEditSession={(s) => setEditingSession(s)}
+          onDeleteSession={(s) => setDeletingSession(s)}
+          onOpenAddSession={handleOpenAddWithTopic}
+        />
+      </section>
 
-      {/* Sessions Count Indicator */}
-      <div className="flex items-center justify-between text-xs text-gray-400 px-1">
-        <span>
-          Showing <b className="text-gray-200">{sessions.length}</b> of{' '}
-          <b className="text-gray-200">{total}</b> speaking sessions
-        </span>
-      </div>
-
-      {/* Loading & Empty States */}
-      {isLoading ? (
-        <LoadingState message="Fetching sessions..." />
-      ) : sessions.length === 0 ? (
-        hasActiveFilters ? (
-          <EmptyState
-            icon={<SearchX className="w-8 h-8" />}
-            title="No Matching Sessions"
-            description="No speaking sessions match your current search query and filters. Try adjusting your search or clearing filters."
-            actionLabel="Reset All Filters"
-            onAction={handleResetFilters}
-          />
-        ) : (
-          <EmptyState
-            icon={<Layers className="w-8 h-8" />}
-            title="Library is Empty"
-            description="You have not saved any speaking sessions yet. Copy the English coach prompt, start a 5-minute B2 session on ChatGPT, and save the conversation link here."
-            actionLabel="Add First Session"
-            onAction={() => setIsAddOpen(true)}
-            actionIcon={<Plus className="w-4 h-4 mr-1.5" />}
-          />
-        )
-      ) : (
-        <>
-          {/* Desktop Table View */}
-          <div className="hidden md:block">
-            <SessionTable
-              sessions={sessions}
-              onEdit={(s) => setEditingSession(s)}
-              onDelete={(s) => setDeletingSession(s)}
-              onRecordResult={(s) => setResultSession(s)}
-              onStatusChange={handleStatusChange}
-            />
+      {/* Part 2: All Saved Sessions Library (Table & Search Filter) */}
+      <section aria-label="All Sessions Directory" className="space-y-4 pt-4 border-t border-[#333333]">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <ListFilter className="w-4 h-4 text-gray-400" />
+            <h2 className="text-lg font-bold text-[#ececec]">
+              All Speaking Sessions Directory
+            </h2>
           </div>
+          <span className="text-xs text-gray-400">
+            Showing <b className="text-gray-200">{sessions.length}</b> of{' '}
+            <b className="text-gray-200">{total}</b> saved sessions
+          </span>
+        </div>
 
-          {/* Mobile Cards View */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:hidden">
-            {sessions.map((s) => (
-              <SessionCard
-                key={s.id}
-                session={s}
-                onEdit={(session) => setEditingSession(session)}
-                onDelete={(session) => setDeletingSession(session)}
-                onRecordResult={(session) => setResultSession(session)}
+        {/* Filter and Search Bar */}
+        <FilterControls
+          search={search}
+          onSearchChange={setSearch}
+          status={status}
+          onStatusChange={setStatus}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          onReset={handleResetFilters}
+          hasActiveFilters={hasActiveFilters}
+        />
+
+        {/* Loading & Empty States for Table */}
+        {isLoading ? (
+          <LoadingState message="Fetching sessions..." />
+        ) : sessions.length === 0 ? (
+          hasActiveFilters ? (
+            <EmptyState
+              icon={<SearchX className="w-8 h-8" />}
+              title="No Matching Sessions"
+              description="No speaking sessions match your current search query and filters. Try adjusting your search or clearing filters."
+              actionLabel="Reset All Filters"
+              onAction={handleResetFilters}
+            />
+          ) : (
+            <EmptyState
+              icon={<Layers className="w-8 h-8" />}
+              title="Library is Empty"
+              description="You have not saved any speaking sessions yet. Select a topic above, paste your ChatGPT conversation link, and start tracking your speaking progress."
+              actionLabel="Add First Session"
+              onAction={() => handleOpenAddWithTopic()}
+              actionIcon={<Plus className="w-4 h-4 mr-1.5" />}
+            />
+          )
+        ) : (
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <SessionTable
+                sessions={sessions}
+                onEdit={(s) => setEditingSession(s)}
+                onDelete={(s) => setDeletingSession(s)}
+                onRecordResult={(s) => handleRecordResult(s)}
                 onStatusChange={handleStatusChange}
               />
-            ))}
-          </div>
-        </>
-      )}
+            </div>
+
+            {/* Mobile Cards View */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:hidden">
+              {sessions.map((s) => (
+                <SessionCard
+                  key={s.id}
+                  session={s}
+                  onEdit={(session) => setEditingSession(session)}
+                  onDelete={(session) => setDeletingSession(session)}
+                  onRecordResult={(session) => handleRecordResult(session)}
+                  onStatusChange={handleStatusChange}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </section>
 
       {/* Dialogs */}
       <SessionFormDialog
         isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
+        initialTopic={initialTopicForAdd}
+        onClose={() => {
+          setIsAddOpen(false);
+          setInitialTopicForAdd(undefined);
+        }}
         onSuccess={loadSessions}
       />
 
@@ -200,7 +236,11 @@ export default function SessionsLibraryPage() {
       <RecordResultDialog
         isOpen={Boolean(resultSession)}
         session={resultSession}
-        onClose={() => setResultSession(null)}
+        initialUrl={selectedUrlForResult}
+        onClose={() => {
+          setResultSession(null);
+          setSelectedUrlForResult(undefined);
+        }}
         onSuccess={loadSessions}
       />
 

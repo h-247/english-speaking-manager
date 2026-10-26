@@ -231,4 +231,41 @@ test.describe('English Speaking Practice Manager E2E Workflows', () => {
     // Verify Attempt with corresponding link and 9.6/10 score
     await expect(page.getByText('9.6/10').first()).toBeVisible();
   });
+
+  test('6. Simplified ChatGPT link manager: select topic from list and add ChatGPT links directly', async ({ page }) => {
+    await page.goto('/sessions');
+    await page.waitForLoadState('networkidle');
+
+    // 1. Verify Topic List is visible with Job & Study and Accommodation & Buildings
+    await expect(page.getByText('Speaking Practice Topics')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Job & Study/i })).toBeVisible();
+    const accomBtn = page.getByRole('button', { name: /Accommodation & Buildings/i });
+    await expect(accomBtn).toBeVisible();
+
+    // 2. Select Accommodation & Buildings from topic list
+    await accomBtn.click();
+    await expect(page.getByRole('heading', { name: /Accommodation & Buildings/i })).toBeVisible();
+
+    // 3. Add ChatGPT link directly into Accommodation & Buildings on this 1 page
+    const testUrl = `https://chatgpt.com/c/accom-link-${Date.now()}`;
+    await page.locator('#chatgpt-link-input').fill(testUrl);
+    await page.getByRole('button', { name: /Add Link to Topic/i }).click();
+
+    // 4. Verify link appears in the selected topic's grouped links list
+    await expect(page.getByText(testUrl).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Primary Chat/i).first()).toBeVisible();
+
+    // 5. Add a second (branch) ChatGPT link to the same selected topic
+    const branchUrl = `https://chatgpt.com/c/accom-branch-${Date.now()}`;
+    await page.locator('#chatgpt-link-input').fill(branchUrl);
+    await page.getByRole('button', { name: /Add Link to Topic/i }).click();
+
+    await expect(page.getByText(branchUrl).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Branch Chat/i).first()).toBeVisible();
+
+    // 6. Test copy button for the link
+    const copyBtn = page.getByRole('button', { name: /Copy Link/i }).first();
+    await copyBtn.click();
+    await expect(page.getByText(/Copied/i).first()).toBeVisible();
+  });
 });

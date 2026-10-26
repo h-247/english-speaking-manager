@@ -222,6 +222,17 @@ export async function addTopicLink(
   return current;
 }
 
+export async function removeTopicLink(
+  sessionId: string,
+  chatgptUrl: string,
+): Promise<SessionItem> {
+  const current = await fetchSession(sessionId);
+  const existing = current.branchUrls || [];
+  return updateSession(sessionId, {
+    branchUrls: existing.filter((u) => u !== chatgptUrl),
+  });
+}
+
 export async function importSessions(payload: ImportPayload) {
   const res = await fetch('/api/import', {
     method: 'POST',
