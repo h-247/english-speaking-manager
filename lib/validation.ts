@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { validateChatGPTUrl } from './chatgpt-url';
 
-export const sessionStatusEnum = ['PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const;
+export const sessionStatusEnum = ['To Do', 'Doing', 'Done', 'PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const;
+export type SessionStatus = (typeof sessionStatusEnum)[number];
 export const sessionStatusSchema = z.enum(sessionStatusEnum);
 
 export const createSessionSchema = z.object({
@@ -18,7 +19,7 @@ export const createSessionSchema = z.object({
       message:
         'Please enter a valid, official HTTPS ChatGPT link (e.g. https://chatgpt.com/c/...)',
     }),
-  status: sessionStatusSchema.optional().default('PLANNED'),
+  status: sessionStatusSchema.optional().default('To Do'),
   notes: z.string().max(10000, 'Notes cannot exceed 10,000 characters.').optional().nullable(),
   tags: z
     .array(z.string().trim().min(1).max(50))
@@ -27,12 +28,26 @@ export const createSessionSchema = z.object({
     .default([]),
   branchUrls: z
     .array(
-      z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
-        message: 'Branch URL must be a valid HTTPS ChatGPT link.',
-      }),
+      z.union([
+        z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+          message: 'Branch URL must be a valid HTTPS ChatGPT link.',
+        }),
+        z.object({
+          url: z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+            message: 'Branch URL must be a valid HTTPS ChatGPT link.',
+          }),
+          status: sessionStatusSchema.optional(),
+        }),
+      ])
     )
     .max(50, 'Maximum 50 branch URLs allowed.')
     .optional(),
+  score: z
+    .number()
+    .min(0, 'Score cannot be negative.')
+    .max(10, 'Score cannot exceed 10.')
+    .optional()
+    .nullable(),
   passCount: z
     .number()
     .int('Pass count must be a whole number.')
@@ -75,12 +90,26 @@ export const updateSessionSchema = z.object({
     .optional(),
   branchUrls: z
     .array(
-      z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
-        message: 'Branch URL must be a valid HTTPS ChatGPT link.',
-      }),
+      z.union([
+        z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+          message: 'Branch URL must be a valid HTTPS ChatGPT link.',
+        }),
+        z.object({
+          url: z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+            message: 'Branch URL must be a valid HTTPS ChatGPT link.',
+          }),
+          status: sessionStatusSchema.optional(),
+        }),
+      ])
     )
     .max(50, 'Maximum 50 branch URLs allowed.')
     .optional(),
+  score: z
+    .number()
+    .min(0, 'Score cannot be negative.')
+    .max(10, 'Score cannot exceed 10.')
+    .optional()
+    .nullable(),
   passCount: z
     .number()
     .int('Pass count must be a whole number.')
@@ -101,14 +130,25 @@ export const updateSessionSchema = z.object({
 });
 
 export const recordResultSchema = z.object({
+  score: z
+    .number()
+    .min(0, 'Score cannot be negative.')
+    .max(10, 'Score cannot exceed 10.')
+    .optional()
+    .nullable(),
   passCount: z
-    .number({ message: 'Pass count is required.' })
+    .number()
     .int('Pass count must be a whole integer.')
-    .nonnegative('Pass count cannot be negative.'),
+    .nonnegative('Pass count cannot be negative.')
+    .optional()
+    .nullable(),
   failCount: z
-    .number({ message: 'Fail count is required.' })
+    .number()
     .int('Fail count must be a whole integer.')
-    .nonnegative('Fail count cannot be negative.'),
+    .nonnegative('Fail count cannot be negative.')
+    .optional()
+    .nullable(),
+  status: sessionStatusSchema.optional(),
   practicedAt: z
     .string()
     .datetime({ message: 'Practiced date must be a valid ISO 8601 timestamp.' })
@@ -126,14 +166,25 @@ export const recordResultSchema = z.object({
 });
 
 export const createAttemptSchema = z.object({
+  score: z
+    .number()
+    .min(0, 'Score cannot be negative.')
+    .max(10, 'Score cannot exceed 10.')
+    .optional()
+    .nullable(),
   passCount: z
-    .number({ message: 'Pass count is required.' })
+    .number()
     .int('Pass count must be a whole integer.')
-    .nonnegative('Pass count cannot be negative.'),
+    .nonnegative('Pass count cannot be negative.')
+    .optional()
+    .nullable(),
   failCount: z
-    .number({ message: 'Fail count is required.' })
+    .number()
     .int('Fail count must be a whole integer.')
-    .nonnegative('Fail count cannot be negative.'),
+    .nonnegative('Fail count cannot be negative.')
+    .optional()
+    .nullable(),
+  status: sessionStatusSchema.optional(),
   practicedAt: z
     .string()
     .datetime({ message: 'Practiced date must be a valid ISO 8601 timestamp.' })
@@ -151,16 +202,25 @@ export const createAttemptSchema = z.object({
 });
 
 export const updateAttemptSchema = z.object({
+  score: z
+    .number()
+    .min(0, 'Score cannot be negative.')
+    .max(10, 'Score cannot exceed 10.')
+    .optional()
+    .nullable(),
   passCount: z
     .number()
     .int('Pass count must be a whole integer.')
     .nonnegative('Pass count cannot be negative.')
-    .optional(),
+    .optional()
+    .nullable(),
   failCount: z
     .number()
     .int('Fail count must be a whole integer.')
     .nonnegative('Fail count cannot be negative.')
-    .optional(),
+    .optional()
+    .nullable(),
+  status: sessionStatusSchema.optional(),
   practicedAt: z
     .string()
     .datetime({ message: 'Practiced date must be a valid ISO 8601 timestamp.' })

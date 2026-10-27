@@ -32,11 +32,10 @@ export function SessionFormDialog({
 
   const [topic, setTopic] = useState('');
   const [chatgptUrl, setChatgptUrl] = useState('');
-  const [status, setStatus] = useState<'PLANNED' | 'IN_PROGRESS' | 'COMPLETED'>('PLANNED');
+  const [status, setStatus] = useState<string>('To Do');
   const [notes, setNotes] = useState('');
   const [tagsInput, setTagsInput] = useState('');
-  const [passCountStr, setPassCountStr] = useState('');
-  const [failCountStr, setFailCountStr] = useState('');
+  const [scoreStr, setScoreStr] = useState('');
   const [practicedDate, setPracticedDate] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -46,17 +45,19 @@ export function SessionFormDialog({
     if (sessionToEdit) {
       setTopic(sessionToEdit.topic);
       setChatgptUrl(sessionToEdit.chatgptUrl);
-      setStatus(sessionToEdit.status);
+      setStatus(
+        sessionToEdit.status === 'COMPLETED' ? 'Done' :
+        sessionToEdit.status === 'IN_PROGRESS' ? 'Doing' :
+        sessionToEdit.status === 'PLANNED' ? 'To Do' :
+        sessionToEdit.status || 'To Do'
+      );
       setNotes(sessionToEdit.notes || '');
       setTagsInput(sessionToEdit.tags ? sessionToEdit.tags.join(', ') : '');
-      setPassCountStr(
-        sessionToEdit.passCount !== null && sessionToEdit.passCount !== undefined
-          ? String(sessionToEdit.passCount)
-          : '',
-      );
-      setFailCountStr(
-        sessionToEdit.failCount !== null && sessionToEdit.failCount !== undefined
-          ? String(sessionToEdit.failCount)
+      setScoreStr(
+        sessionToEdit.score !== null && sessionToEdit.score !== undefined
+          ? String(sessionToEdit.score)
+          : sessionToEdit.passCount !== null && sessionToEdit.failCount !== null
+          ? String(calculateScore(sessionToEdit.passCount, sessionToEdit.failCount) ?? '')
           : '',
       );
       setPracticedDate(
@@ -67,19 +68,16 @@ export function SessionFormDialog({
     } else {
       setTopic(initialTopic || '');
       setChatgptUrl('');
-      setStatus('PLANNED');
+      setStatus('To Do');
       setNotes('');
       setTagsInput('');
-      setPassCountStr('');
-      setFailCountStr('');
+      setScoreStr('');
       setPracticedDate('');
     }
     setErrors({});
   }, [sessionToEdit, isOpen, initialTopic]);
 
-  const passNum = passCountStr !== '' ? parseInt(passCountStr, 10) : null;
-  const failNum = failCountStr !== '' ? parseInt(failCountStr, 10) : null;
-  const scorePreview = calculateScore(passNum, failNum);
+  const parsedScore = scoreStr !== '' && !isNaN(Number(scoreStr)) ? Number(scoreStr) : null;
 
   const handleUrlBlur = () => {
     if (chatgptUrl.trim()) {
@@ -111,17 +109,10 @@ export function SessionFormDialog({
         'Please enter a valid official HTTPS ChatGPT link (e.g. https://chatgpt.com/c/...)';
     }
 
-    if (passCountStr !== '') {
-      const p = Number(passCountStr);
-      if (!Number.isInteger(p) || p < 0) {
-        newErrors.passCount = 'Pass count must be a non-negative whole integer.';
-      }
-    }
-
-    if (failCountStr !== '') {
-      const f = Number(failCountStr);
-      if (!Number.isInteger(f) || f < 0) {
-        newErrors.failCount = 'Fail count must be a non-negative whole integer.';
+    if (scoreStr !== '') {
+      const s = Number(scoreStr);
+      if (isNaN(s) || s < 0 || s > 10) {
+        newErrors.score = 'Score must be a number between 0 and 10.';
       }
     }
 
@@ -137,17 +128,19 @@ export function SessionFormDialog({
         .map((t) => t.trim())
         .filter(Boolean);
 
-      const parsedPass = passCountStr !== '' ? parseInt(passCountStr, 10) : null;
-      const parsedFail = failCountStr !== '' ? parseInt(failCountStr, 10) : null;
       const isoPracticed = practicedDate ? new Date(practicedDate).toISOString() : null;
+      const finalScore = parsedScore !== null ? parsedScore : null;
+      const parsedPass = finalScore !== null ? Math.round(finalScore * 10) : null;
+      const parsedFail = finalScore !== null ? Math.round((10 - finalScore) * 10) : null;
 
       if (isEditing && sessionToEdit) {
         await updateSession(sessionToEdit.id, {
           topic: topic.trim(),
           chatgptUrl: chatgptUrl.trim(),
-          status,
+          status: status as any,
           notes: notes.trim() || null,
           tags: tagsArray,
+          score: finalScore,
           passCount: parsedPass,
           failCount: parsedFail,
           practicedAt: isoPracticed,
@@ -157,9 +150,10 @@ export function SessionFormDialog({
         await createSession({
           topic: topic.trim(),
           chatgptUrl: chatgptUrl.trim(),
-          status,
+          status: status as any,
           notes: notes.trim() || null,
           tags: tagsArray,
+          score: finalScore,
           passCount: parsedPass,
           failCount: parsedFail,
           practicedAt: isoPracticed,
@@ -180,11 +174,11 @@ export function SessionFormDialog({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title={isEditing ? 'Edit Topic' : 'Add Speaking Session / Topic'}
+      title={isEditing ? 'Edit Speaking Session' : 'Add Speaking Session / Topic'}
       description={
         isEditing
-          ? 'Update topic details, ChatGPT link, or practice notes.'
-          : 'Save a new ChatGPT conversation link to practice speaking and group attempts by topic.'
+          ? 'Update topic selection, ChatGPT link, or practice score.'
+          : 'Save a ChatGPT conversation link with topic selection and practice score.'
       }
       maxWidth="lg"
     >
@@ -192,11 +186,11 @@ export function SessionFormDialog({
         <div className="space-y-2">
           <div>
             <label htmlFor="topic-select" className="block text-xs font-medium text-gray-300 mb-1">
-              Choose Preset Topic (Optional Selection)
+              Select Preset Topic (Chọn chủ đề có sẵn)
             </label>
             <select
               id="topic-select"
-              aria-label="Choose Preset Topic"
+              aria-label="Select Preset Topic"
               value={PRESET_TOPICS.some((p) => p.name.toLowerCase() === topic.toLowerCase()) ? topic : 'custom'}
               onChange={(e) => {
                 if (e.target.value !== 'custom') {
@@ -210,7 +204,7 @@ export function SessionFormDialog({
               }}
               className="w-full bg-[#1a1a1a] border border-[#383838] focus:border-white focus:ring-1 focus:ring-white rounded-lg px-3 py-2 text-sm text-[#ececec] outline-none transition-colors"
             >
-              <option value="custom">-- Choose standard topic or enter custom below --</option>
+              <option value="custom">-- Select topic from standard list or type custom below --</option>
               {PRESET_TOPICS.map((p) => (
                 <option key={p.name} value={p.name}>
                   {p.icon} {p.name}
@@ -254,18 +248,18 @@ export function SessionFormDialog({
           }}
           onBlur={handleUrlBlur}
           error={errors.chatgptUrl}
-          helperText="ChatGPT conversation link for this topic (more practice links can be added anytime)"
+          helperText="ChatGPT conversation link for this speaking practice session"
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select
             label="Status"
             value={status}
-            onChange={(e) => setStatus(e.target.value as any)}
+            onChange={(e) => setStatus(e.target.value)}
             options={[
-              { value: 'PLANNED', label: 'Planned (Yellow)' },
-              { value: 'IN_PROGRESS', label: 'In Progress (Blue)' },
-              { value: 'COMPLETED', label: 'Completed (Green)' },
+              { value: 'To Do', label: 'To Do' },
+              { value: 'Doing', label: 'Doing' },
+              { value: 'Done', label: 'Done' },
             ]}
           />
 
@@ -278,41 +272,39 @@ export function SessionFormDialog({
           />
         </div>
 
-        {/* Optional Practice Results section */}
+        {/* Practice Score & Results section */}
         <div className="p-3.5 rounded-xl bg-[#1c1c1c] border border-[#333333] space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-300">
-              Practice Results (Optional)
+              Practice Score / Điểm số (0 - 10)
             </span>
-            {scorePreview !== null && (
+            {parsedScore !== null && (
               <span className="text-xs font-mono font-bold text-emerald-400">
-                Score: {formatScore(scorePreview)}
+                Score: {parsedScore.toFixed(1)} / 10
               </span>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Pass Count"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="e.g. 50"
-              value={passCountStr}
-              onChange={(e) => setPassCountStr(e.target.value)}
-              error={errors.passCount}
-            />
-            <Input
-              label="Fail Count"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="e.g. 5"
-              value={failCountStr}
-              onChange={(e) => setFailCountStr(e.target.value)}
-              error={errors.failCount}
-            />
-          </div>
+          <Input
+            id="scoreInput"
+            label="Score (Điểm số)"
+            type="number"
+            min="0"
+            max="10"
+            step="0.1"
+            placeholder="e.g. 8.5"
+            value={scoreStr}
+            onChange={(e) => {
+              setScoreStr(e.target.value);
+              setErrors((prev) => {
+                const copy = { ...prev };
+                delete copy.score;
+                return copy;
+              });
+            }}
+            error={errors.score}
+            helperText="Nhập điểm số từ 0 đến 10 cho lần luyện nói này"
+          />
 
           <Input
             label="Practiced Date & Time"

@@ -3,6 +3,7 @@ export interface PresetTopic {
   name: string;
   icon: string;
   description: string;
+  category?: string;
 }
 
 export const PRESET_TOPICS: PresetTopic[] = [

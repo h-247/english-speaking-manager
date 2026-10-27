@@ -6,7 +6,9 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
 import { SessionItem } from '@/lib/api-client';
 import { formatDateShort } from '@/lib/format-date';
-import { ExternalLink, Copy, Edit2, Trash2, Award, Link as LinkIcon } from 'lucide-react';
+import { getPresetTopicByName } from '@/lib/preset-topics';
+import { ExternalLink, Copy, Edit2, Trash2, Award, Link as LinkIcon, FileText } from 'lucide-react';
+import { ORIGINAL_COACH_PROMPT } from '@/lib/coach-prompt';
 import { useToast } from '@/components/ui/Toast';
 
 export interface SessionTableProps {
@@ -14,7 +16,7 @@ export interface SessionTableProps {
   onEdit: (session: SessionItem) => void;
   onDelete: (session: SessionItem) => void;
   onRecordResult: (session: SessionItem) => void;
-  onStatusChange: (session: SessionItem, newStatus: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED') => void;
+  onStatusChange: (session: SessionItem, newStatus: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string) => void;
 }
 
 export function SessionTable({
@@ -35,6 +37,16 @@ export function SessionTable({
     }
   };
 
+  const handleCopyPrompt = async (topic: string) => {
+    try {
+      const text = `Topic: ${topic}\n\n${ORIGINAL_COACH_PROMPT}`;
+      await navigator.clipboard.writeText(text);
+      showSuccess(`Copied coach prompt for "${topic}".`);
+    } catch {
+      showError('Failed to copy prompt.');
+    }
+  };
+
   return (
     <div className="w-full overflow-x-auto rounded-xl border border-[#383838] bg-[#262626]">
       <table className="w-full text-left border-collapse">
@@ -52,57 +64,60 @@ export function SessionTable({
         <tbody className="divide-y divide-[#333333] text-sm">
           {sessions.map((session) => {
             const isUnfinished = session.status === 'PLANNED' || session.status === 'IN_PROGRESS';
+            const preset = getPresetTopicByName(session.topic);
+            const icon = preset ? preset.icon : '💬';
 
             return (
               <tr
                 key={session.id}
                 className="hover:bg-[#2c2c2c] transition-colors group"
               >
-                {/* Topic */}
+                {/* Topic Selection */}
                 <td className="py-3.5 px-4 max-w-xs sm:max-w-sm">
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Link
-                        href={`/sessions/${session.id}`}
-                        className="font-semibold text-[#ececec] hover:underline truncate block"
-                        title={session.topic}
-                      >
-                        {session.topic}
-                      </Link>
-                      {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
-                        <span
-                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-950/60 text-blue-300 border border-blue-800/40 shrink-0"
-                          title={`${session.allChatgptUrls.length} ChatGPT conversation links grouped under this topic`}
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-xl shrink-0 mt-0.5" title={preset ? preset.name : session.topic}>
+                      {icon}
+                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Link
+                          href={`/sessions/${session.id}`}
+                          className="font-semibold text-[#ececec] hover:underline truncate block"
+                          title={session.topic}
                         >
-                          <LinkIcon className="w-2.5 h-2.5 text-blue-400" />
-                          {session.allChatgptUrls.length} links
+                          {session.topic}
+                        </Link>
+                      </div>
+                      {session.notes && (
+                        <span className="text-xs text-gray-400 truncate max-w-xs mt-0.5">
+                          {session.notes}
                         </span>
                       )}
                     </div>
-                    {session.notes && (
-                      <span className="text-xs text-gray-400 truncate max-w-xs mt-0.5">
-                        {session.notes}
-                      </span>
-                    )}
                   </div>
                 </td>
 
                 {/* Status with quick switcher */}
                 <td className="py-3.5 px-4 whitespace-nowrap">
                   <select
-                    value={session.status}
-                    onChange={(e) => onStatusChange(session, e.target.value as any)}
-                    className="bg-transparent text-xs font-medium focus:outline-none cursor-pointer rounded px-1.5 py-0.5 border border-transparent hover:border-[#444444]"
+                    value={
+                      session.status === 'COMPLETED' ? 'Done' :
+                      session.status === 'IN_PROGRESS' ? 'Doing' :
+                      session.status === 'PLANNED' ? 'To Do' :
+                      session.status || 'To Do'
+                    }
+                    onChange={(e) => onStatusChange(session, e.target.value)}
+                    className="bg-transparent text-xs font-semibold focus:outline-none cursor-pointer rounded px-2 py-1 border border-[#3e3e3e] hover:border-gray-400 text-gray-200 transition-colors"
                     title="Click to change status"
                   >
-                    <option value="PLANNED" className="bg-[#262626] text-amber-300">
-                      Planned
+                    <option value="To Do" className="bg-[#262626] text-amber-300">
+                      To Do
                     </option>
-                    <option value="IN_PROGRESS" className="bg-[#262626] text-blue-300">
-                      In Progress
+                    <option value="Doing" className="bg-[#262626] text-blue-300">
+                      Doing
                     </option>
-                    <option value="COMPLETED" className="bg-[#262626] text-emerald-300">
-                      Completed
+                    <option value="Done" className="bg-[#262626] text-emerald-300">
+                      Done
                     </option>
                   </select>
                 </td>
@@ -122,12 +137,11 @@ export function SessionTable({
                   </div>
                 </td>
 
-                {/* Pass / Fail counts */}
+                {/* Score Column */}
                 <td className="py-3.5 px-4 whitespace-nowrap font-mono text-xs">
-                  {session.passCount !== null ? (
-                    <span className="text-gray-300">
-                      <b className="text-emerald-400">{session.passCount}</b> /{' '}
-                      <b className="text-rose-400">{session.failCount ?? 0}</b>
+                  {session.score !== null ? (
+                    <span className="text-gray-200 font-bold">
+                      <b className="text-emerald-400">{session.score.toFixed(1)}</b> / 10
                     </span>
                   ) : (
                     <span className="text-gray-500 italic">—</span>
@@ -188,19 +202,29 @@ export function SessionTable({
                       <ExternalLink className="w-3 h-3" />
                     </a>
 
+                    {/* Prompt button */}
+                    <button
+                      onClick={() => handleCopyPrompt(session.topic)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold bg-[#2a2a2a] text-amber-300 hover:bg-[#383838] border border-[#3e3e3e] transition-colors"
+                      title="Copy coach prompt"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Prompt</span>
+                    </button>
+
                     <button
                       onClick={() => handleCopyLink(session.chatgptUrl)}
                       className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#333333] transition-colors"
                       title="Copy ChatGPT link"
                       aria-label="Copy ChatGPT link"
                     >
-                      <Copy className="w-3.5 h-3.5" />
+                      <LinkIcon className="w-3.5 h-3.5" />
                     </button>
 
                     <button
                       onClick={() => onRecordResult(session)}
                       className="p-1.5 rounded text-amber-400 hover:bg-[#333333] transition-colors"
-                      title="Record Pass/Fail results"
+                      title="Record score"
                       aria-label="Record results"
                     >
                       <Award className="w-3.5 h-3.5" />

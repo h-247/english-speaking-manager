@@ -18,11 +18,13 @@ import {
   deleteSession,
   deleteAttempt,
   addTopicLink,
+  updateSession,
   SessionItem,
   PracticeAttemptItem,
 } from '@/lib/api-client';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { formatDate } from '@/lib/format-date';
+import { ORIGINAL_COACH_PROMPT } from '@/lib/coach-prompt';
 import { useToast } from '@/components/ui/Toast';
 import {
   ArrowLeft,
@@ -43,6 +45,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Play,
 } from 'lucide-react';
 
 export default function SessionDetailsPage({
@@ -102,6 +105,43 @@ export default function SessionDetailsPage({
       showSuccess('ChatGPT conversation link copied to clipboard.');
     } catch {
       showError('Failed to copy link.');
+    }
+  };
+
+  const handleCopyPrompt = async () => {
+    if (!session) return;
+    try {
+      const promptText = `Topic: ${session.topic}\n\n${ORIGINAL_COACH_PROMPT}`;
+      await navigator.clipboard.writeText(promptText);
+      showSuccess(`Coach prompt copied for "${session.topic}".`);
+    } catch {
+      showError('Failed to copy coach prompt.');
+    }
+  };
+
+  const handleLinkStatusChange = async (targetUrl: string, newStatus: string) => {
+    if (!session) return;
+    try {
+      if (targetUrl === session.chatgptUrl) {
+        await updateSession(session.id, { status: newStatus as any });
+      } else {
+        const currentBranches = session.branchUrls || [];
+        const updatedBranches = currentBranches.map((b: any) => {
+          const u = typeof b === 'string' ? b : b.url;
+          if (u === targetUrl) {
+            return { url: u, status: newStatus };
+          }
+          return typeof b === 'string' ? { url: b } : b;
+        });
+        if (!updatedBranches.some((b: any) => (typeof b === 'string' ? b : b.url) === targetUrl)) {
+          updatedBranches.push({ url: targetUrl, status: newStatus });
+        }
+        await updateSession(session.id, { branchUrls: updatedBranches as any });
+      }
+      showSuccess(`Updated link status to "${newStatus}".`);
+      await loadSession();
+    } catch (err: any) {
+      showError(err.message || 'Failed to update link status.');
     }
   };
 
@@ -276,92 +316,138 @@ export default function SessionDetailsPage({
             </Button>
           </div>
 
-          <div className="space-y-2 pt-1">
+          <div className="space-y-3 pt-1">
             {(session.groupedLinks && session.groupedLinks.length > 0
               ? session.groupedLinks
               : [{
                   url: session.chatgptUrl,
+                  status: session.status,
                   attemptNumbers: attempts.map((_, i) => attempts.length - i),
                   attemptCount: attempts.length,
                   bestScore: session.score,
                   latestPracticedAt: session.practicedAt,
                 }]
-            ).map((link, idx) => (
-              <div
-                key={link.url}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-[#222222] border border-[#333333] hover:border-[#444444] transition-all"
-              >
-                <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#2a2a2a] text-blue-300 border border-[#444444] shrink-0 inline-flex items-center gap-1">
-                      <LinkIcon className="w-3 h-3 text-blue-400" />
-                      Link #{idx + 1}
-                    </span>
+            ).map((link, idx) => {
+              const linkStatus =
+                link.status === 'COMPLETED' ? 'Done' :
+                link.status === 'IN_PROGRESS' ? 'Doing' :
+                link.status === 'PLANNED' ? 'To Do' :
+                link.status || 'To Do';
 
+              return (
+                <div
+                  key={link.url}
+                  className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 rounded-xl bg-[#20232b] border border-[#2e3442] hover:border-[#3d4557] transition-all"
+                >
+                  <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#162740] text-sky-300 border border-[#214373] shrink-0 inline-flex items-center gap-1">
+                        <LinkIcon className="w-3 h-3 text-sky-400" />
+                        Link #{idx + 1}
+                      </span>
+
+                      <StatusBadge status={linkStatus} size="sm" />
+
+                      {link.bestScore !== null && (
+                        <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/50">
+                          Score: {link.bestScore.toFixed(1)}/10
+                        </span>
+                      )}
+
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs sm:text-sm text-gray-200 hover:text-white hover:underline truncate max-w-sm sm:max-w-md block"
+                        title={link.url}
+                      >
+                        {link.url}
+                      </a>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-[11px] text-gray-400">
+                      <span>
+                        {link.attemptCount > 0 ? (
+                          <>
+                            Used in <b>{link.attemptCount} {link.attemptCount === 1 ? 'attempt' : 'attempts'}</b> (Attempt #{link.attemptNumbers.join(', #')})
+                          </>
+                        ) : (
+                          <span className="text-gray-500 italic">No attempts logged with this link yet</span>
+                        )}
+                      </span>
+                      {link.latestPracticedAt && (
+                        <span>
+                          Practiced: {formatDate(link.latestPracticedAt)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions Bar matching screenshot */}
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap self-end lg:self-auto pt-2 lg:pt-0 border-t border-[#2a303e] lg:border-t-0 w-full lg:w-auto justify-end">
+                    {/* Status Dropdown */}
+                    <select
+                      value={linkStatus}
+                      onChange={(e) => handleLinkStatusChange(link.url, e.target.value)}
+                      className="bg-[#191b22] hover:bg-[#232732] border border-[#394050] text-xs font-semibold rounded-lg px-2 py-1 text-gray-200 cursor-pointer outline-none transition-colors"
+                      title="Change link status"
+                    >
+                      <option value="To Do" className="bg-[#1e2025] text-amber-300">To Do</option>
+                      <option value="Doing" className="bg-[#1e2025] text-blue-300">Doing</option>
+                      <option value="Done" className="bg-[#1e2025] text-emerald-300">Done</option>
+                    </select>
+
+                    {/* ChatGPT ↗ Button */}
                     <a
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs sm:text-sm text-gray-200 hover:text-white hover:underline truncate"
-                      title={link.url}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#272c37] hover:bg-[#343b4a] border border-[#3b4354] text-xs font-semibold text-gray-200 hover:text-white transition-colors"
+                      title="Open conversation in ChatGPT"
                     >
-                      {link.url}
+                      <span>ChatGPT</span>
+                      <ExternalLink className="w-3 h-3 text-gray-400" />
                     </a>
-                  </div>
 
-                  <div className="flex items-center gap-3 text-[11px] text-gray-400">
-                    <span>
-                      {link.attemptCount > 0 ? (
-                        <>
-                          Used in <b>{link.attemptCount} {link.attemptCount === 1 ? 'attempt' : 'attempts'}</b> (Attempt #{link.attemptNumbers.join(', #')})
-                        </>
-                      ) : (
-                        <span className="text-gray-500 italic">No attempts logged with this link yet</span>
-                      )}
-                    </span>
-                    {link.bestScore !== null && (
-                      <span className="text-emerald-400 font-mono font-medium">
-                        Best Score: {link.bestScore}/10
-                      </span>
-                    )}
+                    {/* Prompt 📋 Button */}
+                    <button
+                      type="button"
+                      onClick={handleCopyPrompt}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#272c37] hover:bg-[#343b4a] border border-[#3b4354] text-xs font-semibold text-gray-200 hover:text-white transition-colors"
+                      title="Copy coach prompt for this topic"
+                    >
+                      <span>Prompt</span>
+                      <Copy className="w-3 h-3 text-amber-400" />
+                    </button>
+
+                    {/* ▷ Practice Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedUrlForAttempt(link.url);
+                        setIsResultOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white hover:bg-gray-200 text-black text-xs font-bold shadow-md transition-all active:scale-95"
+                      title="Log score for this link"
+                    >
+                      <Play className="w-3 h-3 fill-black text-black" />
+                      <span>Practice</span>
+                    </button>
+
+                    {/* Teal Copy Link Pill Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyLink(link.url)}
+                      className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#0d2e2b] border border-[#147a6c] text-[#1fd5be] hover:bg-[#12423e] hover:text-[#38efd7] shadow-sm transition-colors"
+                      title="Copy link"
+                      aria-label="Copy link"
+                    >
+                      <LinkIcon className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedUrlForAttempt(link.url);
-                      setIsResultOpen(true);
-                    }}
-                    className="h-7 px-2 text-xs text-amber-400 border-amber-900/50 hover:bg-amber-950/20"
-                    title="Log a practice attempt using this ChatGPT link"
-                  >
-                    <Award className="w-3 h-3 mr-1" />
-                    Practice Here
-                  </Button>
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#2e2e2e] hover:bg-[#3d3d3d] text-xs font-medium text-gray-200 transition-colors"
-                  >
-                    <span>Open</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleCopyLink(link.url)}
-                    className="h-7 px-2 text-xs"
-                  >
-                    <Copy className="w-3 h-3 mr-1" />
-                    Copy
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

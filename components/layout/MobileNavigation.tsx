@@ -31,7 +31,7 @@ export function MobileNavigation() {
   }, [pathname]);
 
   return (
-    <header className="lg:hidden sticky top-0 z-40 bg-[#1c1c1c] border-b border-[#333333] px-4 py-3 flex items-center justify-between">
+    <header className="lg:hidden sticky top-0 z-40 bg-[#1c1c1c] border-b border-[#333333] px-4 py-3 flex items-center justify-between" suppressHydrationWarning>
       <Link href="/" className="flex items-center gap-2.5">
         <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center text-black font-extrabold text-sm">
           S

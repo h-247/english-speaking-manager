@@ -19,7 +19,7 @@ export async function ensureDatabaseInitialized(): Promise<void> {
           chatgpt_url TEXT NOT NULL,
           normalized_url TEXT NOT NULL,
           branch_urls TEXT,
-          status TEXT NOT NULL DEFAULT 'PLANNED',
+          status TEXT NOT NULL DEFAULT 'To Do',
           notes TEXT,
           tags TEXT,
           pass_count INTEGER,

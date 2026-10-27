@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type StatusValue = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
+export type StatusValue = 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
 
 export function StatusBadge({
   status,
@@ -13,22 +13,43 @@ export function StatusBadge({
     string,
     { label: string; bg: string; text: string; border: string; dot: string }
   > = {
+    'To Do': {
+      label: 'To Do',
+      bg: 'bg-amber-500/10',
+      text: 'text-amber-300',
+      border: 'border-amber-500/30',
+      dot: 'bg-amber-400',
+    },
+    Doing: {
+      label: 'Doing',
+      bg: 'bg-blue-500/10',
+      text: 'text-blue-300',
+      border: 'border-blue-500/30',
+      dot: 'bg-blue-400 animate-pulse',
+    },
+    Done: {
+      label: 'Done',
+      bg: 'bg-emerald-500/10',
+      text: 'text-emerald-300',
+      border: 'border-emerald-500/30',
+      dot: 'bg-emerald-400',
+    },
     PLANNED: {
-      label: 'Planned',
+      label: 'To Do',
       bg: 'bg-amber-500/10',
       text: 'text-amber-300',
       border: 'border-amber-500/30',
       dot: 'bg-amber-400',
     },
     IN_PROGRESS: {
-      label: 'In Progress',
+      label: 'Doing',
       bg: 'bg-blue-500/10',
       text: 'text-blue-300',
       border: 'border-blue-500/30',
       dot: 'bg-blue-400 animate-pulse',
     },
     COMPLETED: {
-      label: 'Completed',
+      label: 'Done',
       bg: 'bg-emerald-500/10',
       text: 'text-emerald-300',
       border: 'border-emerald-500/30',

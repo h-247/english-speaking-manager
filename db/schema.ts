@@ -7,7 +7,7 @@ import {
   index,
 } from 'drizzle-orm/sqlite-core';
 
-export const sessionStatusEnum = ['PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const;
+export const sessionStatusEnum = ['To Do', 'Doing', 'Done', 'PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const;
 export type SessionStatus = (typeof sessionStatusEnum)[number];
 
 export const practiceSessions = sqliteTable(
@@ -18,8 +18,8 @@ export const practiceSessions = sqliteTable(
     topic: text('topic').notNull(),
     chatgptUrl: text('chatgpt_url').notNull(),
     normalizedUrl: text('normalized_url').notNull(),
-    branchUrls: text('branch_urls'), // JSON string array of branched ChatGPT links e.g. '["https://chatgpt.com/c/..."]'
-    status: text('status', { enum: sessionStatusEnum }).notNull().default('PLANNED'),
+    branchUrls: text('branch_urls'), // JSON string array of branched ChatGPT links e.g. '["https://chatgpt.com/c/..."]' or '[{"url":"...","status":"To Do"}]'
+    status: text('status', { enum: sessionStatusEnum }).notNull().default('To Do'),
     notes: text('notes'),
     tags: text('tags'), // JSON string array e.g. '["business","b2"]'
     passCount: integer('pass_count'),

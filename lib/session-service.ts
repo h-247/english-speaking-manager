@@ -39,17 +39,16 @@ export class SessionService {
     const conditions = [eq(schema.practiceSessions.userId, userId)];
 
     // Status filter
-    if (
-      options.status &&
-      options.status !== 'ALL' &&
-      ['PLANNED', 'IN_PROGRESS', 'COMPLETED'].includes(options.status)
-    ) {
-      conditions.push(
-        eq(
-          schema.practiceSessions.status,
-          options.status as 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED',
-        ),
-      );
+    if (options.status && options.status !== 'ALL') {
+      if (options.status === 'To Do' || options.status === 'PLANNED') {
+        conditions.push(or(eq(schema.practiceSessions.status, 'To Do'), eq(schema.practiceSessions.status, 'PLANNED'))!);
+      } else if (options.status === 'Doing' || options.status === 'IN_PROGRESS') {
+        conditions.push(or(eq(schema.practiceSessions.status, 'Doing'), eq(schema.practiceSessions.status, 'IN_PROGRESS'))!);
+      } else if (options.status === 'Done' || options.status === 'COMPLETED') {
+        conditions.push(or(eq(schema.practiceSessions.status, 'Done'), eq(schema.practiceSessions.status, 'COMPLETED'))!);
+      } else {
+        conditions.push(eq(schema.practiceSessions.status, options.status as any));
+      }
     }
 
     // Search filter: topic, notes, tags
@@ -207,15 +206,21 @@ export class SessionService {
       });
     }
 
-    for (const b of deserialized.branchUrls) {
-      if (b && !linkMap.has(b)) {
-        linkMap.set(b, {
-          url: b,
-          attemptNumbers: [],
-          attempts: [],
-          bestScore: null,
-          latestPracticedAt: null,
-        });
+    const branchStatusMap = new Map<string, string>();
+    for (const b of (deserialized.branchUrls as any[])) {
+      const url = typeof b === 'string' ? b : b?.url;
+      const st = typeof b === 'object' && b?.status ? b.status : undefined;
+      if (url) {
+        if (st) branchStatusMap.set(url, st);
+        if (!linkMap.has(url)) {
+          linkMap.set(url, {
+            url,
+            attemptNumbers: [],
+            attempts: [],
+            bestScore: null,
+            latestPracticedAt: null,
+          });
+        }
       }
     }
 
@@ -248,11 +253,28 @@ export class SessionService {
       }
     });
 
-    const groupedLinks = Array.from(linkMap.values()).map((item) => ({
-      ...item,
-      attemptNumbers: item.attemptNumbers.sort((a, b) => a - b),
-      attemptCount: item.attemptNumbers.length,
-    }));
+    const groupedLinks = Array.from(linkMap.values()).map((item) => {
+      let status: 'To Do' | 'Doing' | 'Done' = 'To Do';
+      if (branchStatusMap.has(item.url)) {
+        const bs = branchStatusMap.get(item.url)!;
+        status = bs === 'COMPLETED' ? 'Done' : bs === 'IN_PROGRESS' ? 'Doing' : bs === 'PLANNED' ? 'To Do' : (bs as any);
+      } else if (item.url === deserialized.chatgptUrl) {
+        status =
+          deserialized.status === 'Doing' || deserialized.status === 'IN_PROGRESS'
+            ? 'Doing'
+            : deserialized.status === 'Done' || deserialized.status === 'COMPLETED'
+              ? 'Done'
+              : 'To Do';
+      } else if (item.attempts.length > 0) {
+        status = item.bestScore !== null && item.bestScore >= 8 ? 'Done' : 'Doing';
+      }
+      return {
+        ...item,
+        status,
+        attemptNumbers: item.attemptNumbers.sort((a, b) => a - b),
+        attemptCount: item.attemptNumbers.length,
+      };
+    });
 
     return {
       ...deserialized,
@@ -293,7 +315,14 @@ export class SessionService {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    const score = calculateScore(input.passCount, input.failCount);
+    const score =
+      input.score !== undefined && input.score !== null
+        ? Math.round(input.score * 10) / 10
+        : calculateScore(input.passCount, input.failCount);
+    const passCount =
+      input.passCount ?? (score !== null ? Math.round(score * 10) : null);
+    const failCount =
+      input.failCount ?? (score !== null ? Math.round((10 - score) * 10) : null);
     const practicedAt = input.practicedAt ?? (score !== null ? now : null);
 
     const tagsJson =
@@ -310,11 +339,11 @@ export class SessionService {
       chatgptUrl: input.chatgptUrl.trim(),
       normalizedUrl,
       branchUrls: branchUrlsJson,
-      status: input.status ?? 'PLANNED',
+      status: input.status ?? 'To Do',
       notes: input.notes?.trim() || null,
       tags: tagsJson,
-      passCount: input.passCount ?? null,
-      failCount: input.failCount ?? null,
+      passCount,
+      failCount,
       score,
       practicedAt,
       createdAt: now,
@@ -324,13 +353,13 @@ export class SessionService {
     await db.insert(schema.practiceSessions).values(newSession);
 
     // If initial practice results were entered, also record as first attempt in history
-    if (score !== null && typeof input.passCount === 'number' && typeof input.failCount === 'number') {
+    if (score !== null) {
       await db.insert(schema.practiceAttempts).values({
         id: crypto.randomUUID(),
         sessionId: id,
         userId,
-        passCount: input.passCount,
-        failCount: input.failCount,
+        passCount: passCount ?? Math.round(score * 10),
+        failCount: failCount ?? Math.round((10 - score) * 10),
         score,
         notes: input.notes?.trim() || null,
         chatgptUrl: input.chatgptUrl.trim(),
@@ -524,10 +553,17 @@ export class SessionService {
       throw new Error('Session not found or access denied.');
     }
 
-    const score = calculateScore(input.passCount, input.failCount);
+    const score =
+      input.score !== undefined && input.score !== null
+        ? Math.round(input.score * 10) / 10
+        : calculateScore(input.passCount, input.failCount);
     if (score === null) {
-      throw new Error('Valid Pass and Fail counts are required to record practice score.');
+      throw new Error('Valid score or Pass and Fail counts are required to record practice score.');
     }
+    const passCount =
+      input.passCount ?? Math.round(score * 10);
+    const failCount =
+      input.failCount ?? Math.round((10 - score) * 10);
 
     const now = new Date().toISOString();
     const practicedAt = input.practicedAt || now;
@@ -538,8 +574,8 @@ export class SessionService {
       id: attemptId,
       sessionId,
       userId,
-      passCount: input.passCount,
-      failCount: input.failCount,
+      passCount,
+      failCount,
       score,
       notes: input.notes?.trim() || null,
       chatgptUrl: attemptChatgptUrl,
@@ -567,17 +603,19 @@ export class SessionService {
     }
 
     // Update parent session with latest attempt score, counts, practicedAt, status
-    const newStatus = input.markCompleted
-      ? 'COMPLETED'
-      : session.status === 'PLANNED'
-        ? 'IN_PROGRESS'
-        : session.status;
+    const newStatus =
+      input.status ||
+      (input.markCompleted
+        ? 'Done'
+        : session.status === 'To Do' || session.status === 'PLANNED'
+          ? 'Doing'
+          : session.status);
 
     await db
       .update(schema.practiceSessions)
       .set({
-        passCount: input.passCount,
-        failCount: input.failCount,
+        passCount,
+        failCount,
         score,
         practicedAt,
         status: newStatus,
@@ -744,8 +782,8 @@ export class SessionService {
     const score = calculateScore(newPass, newFail);
 
     const updates: Partial<typeof schema.practiceAttempts.$inferInsert> = {};
-    if (input.passCount !== undefined) updates.passCount = input.passCount;
-    if (input.failCount !== undefined) updates.failCount = input.failCount;
+    if (input.passCount !== undefined && input.passCount !== null) updates.passCount = input.passCount;
+    if (input.failCount !== undefined && input.failCount !== null) updates.failCount = input.failCount;
     if (score !== null) updates.score = score;
     if (input.practicedAt !== undefined) updates.practicedAt = input.practicedAt || existing.practicedAt;
     if (input.notes !== undefined) updates.notes = input.notes?.trim() || null;
@@ -843,8 +881,10 @@ export class SessionService {
     input: RecordResultInput,
   ) {
     await this.addAttempt(userId, sessionId, {
+      score: input.score,
       passCount: input.passCount,
       failCount: input.failCount,
+      status: input.status,
       practicedAt: input.practicedAt,
       notes: input.notes,
       chatgptUrl: input.chatgptUrl,
@@ -881,9 +921,9 @@ export class SessionService {
     let completedScoredCount = 0;
 
     for (const s of sessions) {
-      if (s.status === 'PLANNED') plannedSessions++;
-      else if (s.status === 'IN_PROGRESS') inProgressSessions++;
-      else if (s.status === 'COMPLETED') {
+      if (s.status === 'To Do' || s.status === 'PLANNED') plannedSessions++;
+      else if (s.status === 'Doing' || s.status === 'IN_PROGRESS') inProgressSessions++;
+      else if (s.status === 'Done' || s.status === 'COMPLETED') {
         completedSessions++;
         if (s.score !== null && s.score !== undefined) {
           completedScoresSum += s.score;
@@ -915,18 +955,22 @@ export class SessionService {
     // Recent 5 practice sessions
     const recentSessions = sessions.slice(0, 5).map(deserializeSession);
 
-    // Unfinished sessions: PLANNED or IN_PROGRESS, max 5 for quick resume
+    // Unfinished sessions: To Do or Doing (or PLANNED/IN_PROGRESS)
     const unfinishedSessions = sessions
-      .filter((s) => s.status === 'PLANNED' || s.status === 'IN_PROGRESS')
+      .filter((s) => s.status !== 'Done' && s.status !== 'COMPLETED')
       .slice(0, 5)
       .map(deserializeSession);
 
     return {
       totalSessions,
+      toDoSessions: plannedSessions,
+      doingSessions: inProgressSessions,
+      doneSessions: completedSessions,
       plannedSessions,
       inProgressSessions,
       completedSessions,
       averageCompletedScore,
+      averageDoneScore: averageCompletedScore,
       totalPass,
       totalFail,
       recentSessions,
@@ -1221,8 +1265,9 @@ function deserializeSession(row: any) {
 
   const distinctUrls = new Set<string>();
   if (row.chatgptUrl) distinctUrls.add(row.chatgptUrl);
-  for (const b of branchUrls) {
-    if (b) distinctUrls.add(b);
+  for (const b of (branchUrls as any[])) {
+    const u = typeof b === 'string' ? b : b?.url;
+    if (u) distinctUrls.add(u);
   }
 
   return {

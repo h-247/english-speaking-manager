@@ -39,7 +39,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden lg:flex w-64 flex-col fixed inset-y-0 left-0 bg-[#1c1c1c] border-r border-[#333333] z-30 select-none">
+    <aside className="hidden lg:flex w-64 flex-col fixed inset-y-0 left-0 bg-[#1c1c1c] border-r border-[#333333] z-30 select-none" suppressHydrationWarning>
       {/* Brand Header */}
       <div className="h-16 flex items-center gap-3 px-6 border-b border-[#333333]">
         <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-black font-extrabold text-base shadow-sm">

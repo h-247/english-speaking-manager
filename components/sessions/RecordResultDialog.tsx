@@ -18,6 +18,8 @@ export interface RecordResultDialogProps {
     topic: string;
     chatgptUrl?: string;
     allChatgptUrls?: string[];
+    score?: number | null;
+    status?: string;
     passCount?: number | null;
     failCount?: number | null;
     practicedAt?: string | null;
@@ -44,50 +46,42 @@ export function RecordResultDialog({
   onSuccess,
 }: RecordResultDialogProps) {
   const { showSuccess, showError } = useToast();
-  const [passCountStr, setPassCountStr] = useState<string>('');
-  const [failCountStr, setFailCountStr] = useState<string>('');
+  const [scoreStr, setScoreStr] = useState<string>('');
+  const [status, setStatus] = useState<'To Do' | 'Doing' | 'Done'>('Done');
   const [practicedDate, setPracticedDate] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [chatgptUrl, setChatgptUrl] = useState<string>('');
-  const [markCompleted, setMarkCompleted] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState<{ pass?: string; fail?: string; chatgptUrl?: string }>({});
+  const [errors, setErrors] = useState<{ score?: string; chatgptUrl?: string }>({});
 
   useEffect(() => {
     if (session) {
-      setPassCountStr(
-        session.passCount !== null && session.passCount !== undefined
-          ? String(session.passCount)
+      setScoreStr(
+        session.score !== null && session.score !== undefined
+          ? String(session.score)
           : '',
       );
-      setFailCountStr(
-        session.failCount !== null && session.failCount !== undefined
-          ? String(session.failCount)
-          : '',
-      );
+      const initialStatus = session.status === 'Doing' || session.status === 'To Do'
+        ? (session.status as 'To Do' | 'Doing')
+        : 'Done';
+      setStatus(initialStatus);
       setPracticedDate(toLocalDatetimeInputValue(new Date()));
       setNotes('');
       setChatgptUrl(initialUrl || '');
-      setMarkCompleted(true);
       setErrors({});
     }
   }, [session, isOpen, initialUrl]);
 
   if (!session) return null;
 
-  const passNum = passCountStr !== '' ? parseInt(passCountStr, 10) : null;
-  const failNum = failCountStr !== '' ? parseInt(failCountStr, 10) : null;
-  const previewScore = calculateScore(passNum, failNum);
+  const scoreNum = scoreStr !== '' && !isNaN(Number(scoreStr)) ? Number(scoreStr) : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: { pass?: string; fail?: string; chatgptUrl?: string } = {};
+    const newErrors: { score?: string; chatgptUrl?: string } = {};
 
-    if (passCountStr === '' || isNaN(Number(passCountStr)) || Number(passCountStr) < 0) {
-      newErrors.pass = 'Please enter a valid non-negative integer for Pass count.';
-    }
-    if (failCountStr === '' || isNaN(Number(failCountStr)) || Number(failCountStr) < 0) {
-      newErrors.fail = 'Please enter a valid non-negative integer for Fail count.';
+    if (scoreStr === '' || isNaN(Number(scoreStr)) || Number(scoreStr) < 0 || Number(scoreStr) > 10) {
+      newErrors.score = 'Vui lòng nhập điểm hợp lệ từ 0 đến 10.';
     }
     if (chatgptUrl.trim()) {
       const validation = validateChatGPTUrl(chatgptUrl.trim());
@@ -104,17 +98,22 @@ export function RecordResultDialog({
     setIsLoading(true);
     try {
       const isoPracticed = practicedDate ? new Date(practicedDate).toISOString() : new Date().toISOString();
+      const finalScore = Number(scoreStr);
+      const autoPass = Math.round(finalScore * 10);
+      const autoFail = Math.round((10 - finalScore) * 10);
 
       await recordResult(session.id, {
-        passCount: Number(passCountStr),
-        failCount: Number(failCountStr),
+        score: finalScore,
+        passCount: autoPass,
+        failCount: autoFail,
+        status,
         practicedAt: isoPracticed,
         notes: notes.trim() || undefined,
         chatgptUrl: chatgptUrl.trim() || undefined,
-        markCompleted,
+        markCompleted: status === 'Done',
       });
 
-      showSuccess(`Recorded practice results for "${session.topic}". Score: ${formatScore(previewScore)}`);
+      showSuccess(`Recorded practice results for "${session.topic}". Score: ${finalScore}/10`);
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -128,45 +127,48 @@ export function RecordResultDialog({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Record Practice Results"
-      description={`Enter sentence counters from ChatGPT for "${session.topic}".`}
+      title="Record Practice Score (Ghi điểm luyện nói)"
+      description={`Enter score (0 - 10) and status for "${session.topic}".`}
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3">
+        {/* Score & Status Inputs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
-            label="Pass Count"
-            id="passCount"
+            label="Score / Điểm số (0 - 10)"
+            id="score"
             type="number"
             min="0"
-            step="1"
+            max="10"
+            step="0.1"
             required
-            placeholder="e.g. 48"
-            value={passCountStr}
+            autoFocus
+            placeholder="e.g. 8.5"
+            value={scoreStr}
             onChange={(e) => {
-              setPassCountStr(e.target.value);
-              setErrors((prev) => ({ ...prev, pass: undefined }));
+              setScoreStr(e.target.value);
+              setErrors((prev) => ({ ...prev, score: undefined }));
             }}
-            error={errors.pass}
-            helperText="Number of correct Echo Mode repetitions"
+            error={errors.score}
+            helperText="Nhập điểm số từ 0.0 đến 10.0"
           />
 
-          <Input
-            label="Fail Count (inc. 'h' skips)"
-            id="failCount"
-            type="number"
-            min="0"
-            step="1"
-            required
-            placeholder="e.g. 12"
-            value={failCountStr}
-            onChange={(e) => {
-              setFailCountStr(e.target.value);
-              setErrors((prev) => ({ ...prev, fail: undefined }));
-            }}
-            error={errors.fail}
-            helperText="Incorrect attempts and skipped ('h') sentences"
-          />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="sessionStatusSelect" className="text-xs font-semibold text-gray-300">
+              Trạng thái (Status)
+            </label>
+            <select
+              id="sessionStatusSelect"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as 'To Do' | 'Doing' | 'Done')}
+              className="w-full bg-[#1a1a1a] border border-[#383838] focus:border-white focus:ring-1 focus:ring-white rounded-lg px-3 py-2 text-sm text-[#ececec] outline-none transition-colors"
+            >
+              <option value="To Do">To Do</option>
+              <option value="Doing">Doing</option>
+              <option value="Done">Done</option>
+            </select>
+            <span className="text-[11px] text-gray-400">Trạng thái sau lần luyện nói</span>
+          </div>
         </div>
 
         {/* Live Score Preview Card */}
@@ -177,16 +179,16 @@ export function RecordResultDialog({
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-semibold text-gray-300">
-                Calculated Score Preview
+                Speaking Score
               </span>
               <span className="text-[11px] text-gray-400 font-mono">
-                10 × Pass / (Pass + Fail)
+                Thang điểm 10
               </span>
             </div>
           </div>
           <div className="text-right">
-            <span className="text-xl font-bold font-mono text-[#ececec]">
-              {formatScore(previewScore)}
+            <span className="text-2xl font-bold font-mono text-[#ececec]">
+              {scoreNum !== null ? `${scoreNum.toFixed(1)} / 10` : '-- / 10'}
             </span>
           </div>
         </div>
@@ -264,17 +266,6 @@ export function RecordResultDialog({
             className="w-full px-3 py-2 text-sm rounded-lg bg-[#1a1a1a] border border-[#383838] text-[#ececec] placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-white transition-colors resize-none"
           />
         </div>
-
-        <label className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-[#202020] cursor-pointer text-sm text-gray-300 select-none">
-          <input
-            type="checkbox"
-            checked={markCompleted}
-            onChange={(e) => setMarkCompleted(e.target.checked)}
-            className="w-4 h-4 rounded bg-[#1a1a1a] border-[#383838] text-white focus:ring-0 focus:ring-offset-0 cursor-pointer"
-          />
-          <CheckCircle className="w-4 h-4 text-emerald-400" />
-          <span>Mark session status as Completed</span>
-        </label>
 
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#383838] mt-2">
           <Button variant="outline" size="sm" type="button" onClick={onClose} disabled={isLoading}>

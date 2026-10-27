@@ -66,10 +66,10 @@ export default function DashboardPage() {
 
   const handleStatusChange = async (
     session: SessionItem,
-    newStatus: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED',
+    newStatus: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string,
   ) => {
     try {
-      await updateSession(session.id, { status: newStatus });
+      await updateSession(session.id, { status: newStatus as any });
       showSuccess(`Updated status to ${newStatus}.`);
       loadData();
     } catch (err: any) {
@@ -99,14 +99,14 @@ export default function DashboardPage() {
   const hasSessions = (data?.totalSessions ?? 0) > 0;
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-150">
+    <div className="space-y-8 animate-in fade-in duration-150" suppressHydrationWarning>
       {/* Top Banner / Actions Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#333333]">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#ececec]">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#333333]" suppressHydrationWarning>
+        <div suppressHydrationWarning>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#ececec]" suppressHydrationWarning>
             Speaking Practice Dashboard
           </h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-gray-400 mt-1" suppressHydrationWarning>
             Track and manage your 5-minute B2 TED Talk sessions with ChatGPT.
           </p>
         </div>
@@ -144,39 +144,40 @@ export default function DashboardPage() {
           accentColor="default"
         />
         <StatsCard
-          label="Planned"
-          value={data?.plannedSessions ?? 0}
+          label="To Do"
+          value={data?.toDoSessions ?? data?.plannedSessions ?? 0}
           icon={<Clock className="w-4 h-4 text-amber-400" />}
           accentColor="yellow"
         />
         <StatsCard
-          label="In Progress"
-          value={data?.inProgressSessions ?? 0}
+          label="Doing"
+          value={data?.doingSessions ?? data?.inProgressSessions ?? 0}
           icon={<Sparkles className="w-4 h-4 text-blue-400" />}
           accentColor="blue"
         />
         <StatsCard
-          label="Completed"
-          value={data?.completedSessions ?? 0}
+          label="Done"
+          value={data?.doneSessions ?? data?.completedSessions ?? 0}
           icon={<CheckCircle2 className="w-4 h-4 text-emerald-400" />}
           accentColor="green"
         />
       </div>
 
-      {/* Secondary Stats: Average Score & Sentence Counters */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+      {/* Secondary Stats: Average Score */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         <div className="bg-[#262626] border border-[#383838] rounded-xl p-4 sm:p-5 flex items-center justify-between shadow-sm">
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider block">
-              Average Score (Completed)
+              Average Score (Done)
             </span>
             <div className="mt-1 flex items-baseline gap-1.5">
               <span className="text-2xl font-bold font-mono text-emerald-400">
-                {data?.averageCompletedScore !== null && data?.averageCompletedScore !== undefined
-                  ? data.averageCompletedScore.toFixed(1)
+                {(data?.averageDoneScore ?? data?.averageCompletedScore) !== null &&
+                (data?.averageDoneScore ?? data?.averageCompletedScore) !== undefined
+                  ? (data?.averageDoneScore ?? data?.averageCompletedScore)!.toFixed(1)
                   : '—'}
               </span>
-              {data?.averageCompletedScore !== null && (
+              {(data?.averageDoneScore ?? data?.averageCompletedScore) !== null && (
                 <span className="text-xs text-gray-400 font-mono">/10</span>
               )}
             </div>
@@ -189,28 +190,14 @@ export default function DashboardPage() {
         <div className="bg-[#262626] border border-[#383838] rounded-xl p-4 sm:p-5 flex items-center justify-between shadow-sm">
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider block">
-              Total Pass Attempts
+              Total Practice Attempts
             </span>
-            <span className="text-2xl font-bold font-mono text-emerald-300 mt-1 block">
-              {data?.totalPass ?? 0}
+            <span className="text-2xl font-bold font-mono text-sky-300 mt-1 block">
+              {data?.totalAttempts ?? (data?.totalPass !== undefined && data?.totalPass > 0 ? 1 : 0)}
             </span>
           </div>
-          <div className="p-3 rounded-full bg-emerald-950/40 border border-emerald-800/40 text-emerald-400">
+          <div className="p-3 rounded-full bg-sky-950/40 border border-sky-800/40 text-sky-400">
             <Award className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-[#262626] border border-[#383838] rounded-xl p-4 sm:p-5 flex items-center justify-between shadow-sm">
-          <div>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider block">
-              Total Fail Attempts
-            </span>
-            <span className="text-2xl font-bold font-mono text-rose-300 mt-1 block">
-              {data?.totalFail ?? 0}
-            </span>
-          </div>
-          <div className="p-3 rounded-full bg-rose-950/40 border border-rose-800/40 text-rose-400">
-            <Clock className="w-5 h-5" />
           </div>
         </div>
       </div>

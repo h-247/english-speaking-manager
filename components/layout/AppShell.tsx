@@ -4,11 +4,11 @@ import { MobileNavigation } from './MobileNavigation';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#212121] text-[#ececec] flex flex-col">
+    <div className="min-h-screen bg-[#212121] text-[#ececec] flex flex-col" suppressHydrationWarning>
       <MobileNavigation />
       <Sidebar />
-      <div className="lg:pl-64 flex-1 flex flex-col">
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="lg:pl-64 flex-1 flex flex-col" suppressHydrationWarning>
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8" suppressHydrationWarning>
           {children}
         </main>
       </div>

@@ -41,18 +41,16 @@ export function EditAttemptDialog({
   topicName,
 }: EditAttemptDialogProps) {
   const { showSuccess, showError } = useToast();
-  const [passCountStr, setPassCountStr] = useState<string>('');
-  const [failCountStr, setFailCountStr] = useState<string>('');
+  const [scoreStr, setScoreStr] = useState<string>('');
   const [practicedDate, setPracticedDate] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [chatgptUrl, setChatgptUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState<{ pass?: string; fail?: string; chatgptUrl?: string }>({});
+  const [errors, setErrors] = useState<{ score?: string; chatgptUrl?: string }>({});
 
   useEffect(() => {
     if (attempt) {
-      setPassCountStr(String(attempt.passCount));
-      setFailCountStr(String(attempt.failCount));
+      setScoreStr(attempt.score !== null && attempt.score !== undefined ? String(attempt.score) : '');
       setPracticedDate(toLocalDatetimeInputValue(attempt.practicedAt));
       setNotes(attempt.notes || '');
       setChatgptUrl(attempt.chatgptUrl || '');
@@ -62,19 +60,14 @@ export function EditAttemptDialog({
 
   if (!attempt) return null;
 
-  const passNum = passCountStr !== '' ? parseInt(passCountStr, 10) : null;
-  const failNum = failCountStr !== '' ? parseInt(failCountStr, 10) : null;
-  const previewScore = calculateScore(passNum, failNum);
+  const scoreNum = scoreStr !== '' && !isNaN(Number(scoreStr)) ? Number(scoreStr) : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: { pass?: string; fail?: string; chatgptUrl?: string } = {};
+    const newErrors: { score?: string; chatgptUrl?: string } = {};
 
-    if (passCountStr === '' || isNaN(Number(passCountStr)) || Number(passCountStr) < 0) {
-      newErrors.pass = 'Please enter a valid non-negative integer for Pass count.';
-    }
-    if (failCountStr === '' || isNaN(Number(failCountStr)) || Number(failCountStr) < 0) {
-      newErrors.fail = 'Please enter a valid non-negative integer for Fail count.';
+    if (scoreStr === '' || isNaN(Number(scoreStr)) || Number(scoreStr) < 0 || Number(scoreStr) > 10) {
+      newErrors.score = 'Vui lòng nhập điểm hợp lệ từ 0 đến 10.';
     }
     if (chatgptUrl.trim()) {
       const validation = validateChatGPTUrl(chatgptUrl.trim());
@@ -94,15 +87,20 @@ export function EditAttemptDialog({
         ? new Date(practicedDate).toISOString()
         : new Date().toISOString();
 
+      const finalScore = Number(scoreStr);
+      const autoPass = Math.round(finalScore * 10);
+      const autoFail = Math.round((10 - finalScore) * 10);
+
       await updateAttempt(sessionId, attempt.id, {
-        passCount: Number(passCountStr),
-        failCount: Number(failCountStr),
+        score: finalScore,
+        passCount: autoPass,
+        failCount: autoFail,
         practicedAt: isoPracticed,
         notes: notes.trim() || null,
         chatgptUrl: chatgptUrl.trim() || null,
       });
 
-      showSuccess(`Practice attempt updated. New score: ${formatScore(previewScore)}`);
+      showSuccess(`Practice attempt updated. New score: ${finalScore}/10`);
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -117,46 +115,29 @@ export function EditAttemptDialog({
       isOpen={isOpen}
       onClose={onClose}
       title="Edit Practice Attempt & ChatGPT Link"
-      description={`Update counters, ChatGPT link, or practice notes${topicName ? ` for "${topicName}"` : ''}.`}
+      description={`Update score, ChatGPT link, or practice notes${topicName ? ` for "${topicName}"` : ''}.`}
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        {/* Pass and Fail Counters */}
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Pass Count"
-            id="editPassCount"
-            type="number"
-            min="0"
-            step="1"
-            required
-            placeholder="e.g. 48"
-            value={passCountStr}
-            onChange={(e) => {
-              setPassCountStr(e.target.value);
-              setErrors((prev) => ({ ...prev, pass: undefined }));
-            }}
-            error={errors.pass}
-            helperText="Number of correct repetitions"
-          />
-
-          <Input
-            label="Fail Count (inc. 'h' skips)"
-            id="editFailCount"
-            type="number"
-            min="0"
-            step="1"
-            required
-            placeholder="e.g. 12"
-            value={failCountStr}
-            onChange={(e) => {
-              setFailCountStr(e.target.value);
-              setErrors((prev) => ({ ...prev, fail: undefined }));
-            }}
-            error={errors.fail}
-            helperText="Incorrect & skipped repetitions"
-          />
-        </div>
+        {/* Score Input */}
+        <Input
+          label="Score / Điểm số (0 - 10)"
+          id="editScore"
+          type="number"
+          min="0"
+          max="10"
+          step="0.1"
+          required
+          autoFocus
+          placeholder="e.g. 8.5"
+          value={scoreStr}
+          onChange={(e) => {
+            setScoreStr(e.target.value);
+            setErrors((prev) => ({ ...prev, score: undefined }));
+          }}
+          error={errors.score}
+          helperText="Nhập điểm số từ 0.0 đến 10.0 cho lần luyện nói này"
+        />
 
         {/* Live Score Preview Card */}
         <div className="p-4 rounded-xl bg-[#1a1a1a] border border-[#383838] flex items-center justify-between">
@@ -169,13 +150,13 @@ export function EditAttemptDialog({
                 Updated Score Preview
               </span>
               <span className="text-[11px] text-gray-400 font-mono">
-                10 × Pass / (Pass + Fail)
+                Thang điểm 10
               </span>
             </div>
           </div>
           <div className="text-right">
-            <span className="text-xl font-bold font-mono text-[#ececec]">
-              {formatScore(previewScore)}
+            <span className="text-2xl font-bold font-mono text-[#ececec]">
+              {scoreNum !== null ? `${scoreNum.toFixed(1)} / 10` : '-- / 10'}
             </span>
           </div>
         </div>

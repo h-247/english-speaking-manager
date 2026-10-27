@@ -8,31 +8,31 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
 import { SessionFormDialog } from '@/components/sessions/SessionFormDialog';
 import { RecordResultDialog } from '@/components/sessions/RecordResultDialog';
-import { TopicLinkManager } from '@/components/sessions/TopicLinkManager';
+import { SessionTable } from '@/components/sessions/SessionTable';
+import { SessionCard } from '@/components/sessions/SessionCard';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { fetchSessions, deleteSession, updateSession, SessionItem } from '@/lib/api-client';
 import { PRESET_TOPICS, getPresetTopicByName } from '@/lib/preset-topics';
-import { formatDate } from '@/lib/format-date';
+import { formatDateShort } from '@/lib/format-date';
 import { useToast } from '@/components/ui/Toast';
 import {
   Plus,
   Search,
-  Edit2,
-  Trash2,
-  Layers,
-  ExternalLink,
-  Award,
   Sparkles,
+  ExternalLink,
+  Layers,
+  Award,
   Clock,
-  ArrowRight,
-  Filter,
+  LayoutGrid,
+  List,
   CheckCircle2,
   FolderPlus,
-  Link as LinkIcon,
+  X,
+  TrendingUp,
 } from 'lucide-react';
 
 export function TopicsPageContent({
-  defaultTab = 'workspace',
+  defaultTab,
 }: {
   defaultTab?: 'crud' | 'workspace';
 } = {}) {
@@ -41,115 +41,147 @@ export function TopicsPageContent({
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Active view tab: 'workspace' (Topic Selection & Practice Links) | 'crud' (Topics Management)
-  const [activeTab, setActiveTab] = useState<'crud' | 'workspace'>(defaultTab);
-
-  // Search and filter for the CRUD table
+  // Filters & view options
+  const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED'>('ALL');
-
-  // Workspace selected topic state
-  const [selectedTopicForWorkspace, setSelectedTopicForWorkspace] = useState<string | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED'>('ALL');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards');
 
   // Dialog states
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [initialTopicForAdd, setInitialTopicForAdd] = useState<string | undefined>(undefined);
   const [editingSession, setEditingSession] = useState<SessionItem | null>(null);
   const [resultSession, setResultSession] = useState<SessionItem | null>(null);
-  const [selectedUrlForResult, setSelectedUrlForResult] = useState<string | undefined>(undefined);
   const [deletingSession, setDeletingSession] = useState<SessionItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadTopics = useCallback(async () => {
+  const loadSessions = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetchSessions({ limit: 100 });
       setSessions(res.sessions);
     } catch (err: any) {
-      showError(err.message || 'Failed to load topics.');
+      showError(err.message || 'Failed to load practice sessions.');
     } finally {
       setIsLoading(false);
     }
   }, [showError]);
 
   useEffect(() => {
-    loadTopics();
-  }, [loadTopics]);
+    loadSessions();
+  }, [loadSessions]);
 
   const handleConfirmDelete = async () => {
     if (!deletingSession) return;
     setIsDeleting(true);
     try {
       await deleteSession(deletingSession.id);
-      showSuccess(`Deleted topic "${deletingSession.topic}".`);
+      showSuccess(`Deleted session "${deletingSession.topic}".`);
       setDeletingSession(null);
-      loadTopics();
+      loadSessions();
     } catch (err: any) {
-      showError(err.message || 'Failed to delete topic.');
+      showError(err.message || 'Failed to delete session.');
     } finally {
       setIsDeleting(false);
     }
   };
 
-  const handleOpenAddWithTopic = (initialTopic?: string) => {
-    setInitialTopicForAdd(initialTopic);
+  const handleStatusChange = async (
+    session: SessionItem,
+    newStatus: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string,
+  ) => {
+    try {
+      await updateSession(session.id, { status: newStatus as any });
+      showSuccess(`Updated status to ${newStatus}.`);
+      loadSessions();
+    } catch (err: any) {
+      showError(err.message || 'Failed to update status.');
+    }
+  };
+
+  const handleOpenAddWithTopic = (topicName?: string) => {
+    setInitialTopicForAdd(topicName);
     setIsAddOpen(true);
   };
 
-  const handleRecordResult = (session: SessionItem, initialUrl?: string) => {
-    setResultSession(session);
-    setSelectedUrlForResult(initialUrl);
-  };
-
-  const handleGoToWorkspace = (topicName: string) => {
-    setSelectedTopicForWorkspace(topicName);
-    setActiveTab('workspace');
-  };
-
-  // Filtered topics for the CRUD table
+  // Filter sessions by topic selection, search, and status
   const filteredSessions = useMemo(() => {
     return sessions.filter((s) => {
+      const matchesTopic =
+        selectedTopicFilter === 'ALL' ||
+        s.topic.trim().toLowerCase() === selectedTopicFilter.trim().toLowerCase();
+
       const matchesSearch =
         !searchQuery.trim() ||
         s.topic.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.notes && s.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+        (s.notes && s.notes.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        s.chatgptUrl.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const normStatus =
+        s.status === 'COMPLETED' ? 'Done' :
+        s.status === 'IN_PROGRESS' ? 'Doing' :
+        s.status === 'PLANNED' ? 'To Do' :
+        s.status;
 
       const matchesStatus =
-        statusFilter === 'ALL' || s.status === statusFilter;
+        statusFilter === 'ALL' ||
+        s.status === statusFilter ||
+        normStatus === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      return matchesTopic && matchesSearch && matchesStatus;
     });
-  }, [sessions, searchQuery, statusFilter]);
+  }, [sessions, selectedTopicFilter, searchQuery, statusFilter]);
 
-  // Counts for filters
+  // Counts by status
   const counts = useMemo(() => {
     return {
       all: sessions.length,
-      planned: sessions.filter((s) => s.status === 'PLANNED').length,
-      inProgress: sessions.filter((s) => s.status === 'IN_PROGRESS').length,
-      completed: sessions.filter((s) => s.status === 'COMPLETED').length,
+      toDo: sessions.filter((s) => s.status === 'To Do' || s.status === 'PLANNED').length,
+      doing: sessions.filter((s) => s.status === 'Doing' || s.status === 'IN_PROGRESS').length,
+      done: sessions.filter((s) => s.status === 'Done' || s.status === 'COMPLETED').length,
     };
   }, [sessions]);
 
+  // Count sessions per preset topic selection
+  const topicCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of sessions) {
+      const lower = s.topic.trim().toLowerCase();
+      map.set(lower, (map.get(lower) || 0) + 1);
+    }
+    return map;
+  }, [sessions]);
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-150">
+    <div className="space-y-6 animate-in fade-in duration-150" suppressHydrationWarning>
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#333333]">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#ececec]">
-              Speaking Topics & Links
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-[#333333]" suppressHydrationWarning>
+        <div suppressHydrationWarning>
+          <div className="flex items-center gap-2" suppressHydrationWarning>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#ececec]" suppressHydrationWarning>
+              Speaking Practice Sessions
             </h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-neutral-800 text-gray-300 border border-neutral-700 font-medium">
-              {sessions.length} {sessions.length === 1 ? 'Topic' : 'Topics'}
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-neutral-800 text-gray-300 border border-neutral-700 font-medium" suppressHydrationWarning>
+              {sessions.length} {sessions.length === 1 ? 'Session' : 'Sessions'}
             </span>
           </div>
-          <p className="text-sm text-gray-400 mt-1">
-            Create, view, edit, and organize all your English conversation topics and ChatGPT links in one place.
+          <p className="text-sm text-gray-400 mt-1" suppressHydrationWarning>
+            Quản lý các lần luyện nói với ChatGPT: chọn chủ đề, lưu ChatGPT links kèm theo điểm số.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          <a
+            href="https://chatgpt.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#2a2a2a] border border-[#3e3e3e] text-gray-200 hover:text-white hover:border-gray-400 transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            Open ChatGPT
+            <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
+          </a>
+
           <Button variant="primary" size="sm" onClick={() => handleOpenAddWithTopic()}>
             <Plus className="w-4 h-4 mr-1.5" />
             Add Session / Topic
@@ -157,315 +189,293 @@ export function TopicsPageContent({
         </div>
       </div>
 
-      {/* View Tabs */}
-      <div className="flex items-center gap-2 border-b border-[#333333] pb-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('workspace')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-            activeTab === 'workspace'
-              ? 'bg-[#2a2a2a] text-white border border-[#444444]'
-              : 'text-gray-400 hover:text-white hover:bg-[#222222]'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          Topic Selection & ChatGPT Links
-        </button>
+      {/* Topic Selections Filter Bar */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-gray-400">
+          <span className="font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-blue-400" />
+            Topic Selections (Chủ đề luyện nói)
+          </span>
+          {selectedTopicFilter !== 'ALL' && (
+            <button
+              onClick={() => setSelectedTopicFilter('ALL')}
+              className="text-xs text-gray-400 hover:text-white flex items-center gap-1"
+            >
+              <X className="w-3 h-3" /> Show All Topics
+            </button>
+          )}
+        </div>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('crud')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-            activeTab === 'crud'
-              ? 'bg-[#2a2a2a] text-white border border-[#444444]'
-              : 'text-gray-400 hover:text-white hover:bg-[#222222]'
-          }`}
-        >
-          <Layers className="w-4 h-4 text-blue-400" />
-          Topics Overview (CRUD)
-        </button>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setSelectedTopicFilter('ALL')}
+            className={`text-xs px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+              selectedTopicFilter === 'ALL'
+                ? 'bg-white text-black'
+                : 'bg-[#222222] text-gray-400 hover:text-white border border-[#333333]'
+            }`}
+          >
+            <span>All Topics</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                selectedTopicFilter === 'ALL'
+                  ? 'bg-black text-white'
+                  : 'bg-[#333333] text-gray-400'
+              }`}
+            >
+              {sessions.length}
+            </span>
+          </button>
+
+          {PRESET_TOPICS.map((topic) => {
+            const count = topicCounts.get(topic.name.toLowerCase()) || 0;
+            const isSelected = selectedTopicFilter.toLowerCase() === topic.name.toLowerCase();
+
+            return (
+              <button
+                key={topic.id}
+                type="button"
+                onClick={() => setSelectedTopicFilter(isSelected ? 'ALL' : topic.name)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-blue-600 text-white font-semibold border border-blue-500'
+                    : 'bg-[#222222] text-gray-300 hover:text-white hover:bg-[#2a2a2a] border border-[#333333]'
+                }`}
+              >
+                <span>{topic.icon}</span>
+                <span>{topic.name}</span>
+                {count > 0 && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isSelected
+                        ? 'bg-blue-800 text-white'
+                        : 'bg-[#333333] text-gray-300'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {activeTab === 'crud' ? (
-        /* =================== TAB 1: TOPICS CRUD TABLE & CARDS =================== */
-        <div className="space-y-4">
-          {/* Search & Status Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#262626] p-3 rounded-xl border border-[#383838]">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by topic, notes, or tags..."
-                className="w-full bg-[#1c1c1c] border border-[#383838] focus:border-white focus:ring-1 focus:ring-white rounded-lg pl-9 pr-3.5 py-2 text-sm text-[#ececec] placeholder-gray-500 outline-none transition-colors"
-              />
-            </div>
+      {/* Search, Status Filter & View Mode Bar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#262626] p-3 rounded-xl border border-[#383838]">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by topic, notes, or ChatGPT link..."
+            className="w-full bg-[#1c1c1c] border border-[#383838] focus:border-white focus:ring-1 focus:ring-white rounded-lg pl-9 pr-3.5 py-2 text-sm text-[#ececec] placeholder-gray-500 outline-none transition-colors"
+          />
+        </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              <button
-                type="button"
-                onClick={() => setStatusFilter('ALL')}
-                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  statusFilter === 'ALL'
-                    ? 'bg-white text-black font-semibold'
-                    : 'bg-[#1c1c1c] text-gray-400 hover:text-white border border-[#383838]'
-                }`}
-              >
-                All ({counts.all})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('PLANNED')}
-                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  statusFilter === 'PLANNED'
-                    ? 'bg-amber-400 text-black font-semibold'
-                    : 'bg-[#1c1c1c] text-amber-400/80 hover:text-amber-300 border border-[#383838]'
-                }`}
-              >
-                Planned ({counts.planned})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('IN_PROGRESS')}
-                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  statusFilter === 'IN_PROGRESS'
-                    ? 'bg-blue-500 text-white font-semibold'
-                    : 'bg-[#1c1c1c] text-blue-400/80 hover:text-blue-300 border border-[#383838]'
-                }`}
-              >
-                In Progress ({counts.inProgress})
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('COMPLETED')}
-                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                  statusFilter === 'COMPLETED'
-                    ? 'bg-emerald-500 text-white font-semibold'
-                    : 'bg-[#1c1c1c] text-emerald-400/80 hover:text-emerald-300 border border-[#383838]'
-                }`}
-              >
-                Completed ({counts.completed})
-              </button>
-            </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('ALL')}
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                statusFilter === 'ALL'
+                  ? 'bg-white text-black font-semibold'
+                  : 'bg-[#1c1c1c] text-gray-400 hover:text-white border border-[#383838]'
+              }`}
+            >
+              All ({counts.all})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('To Do')}
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                statusFilter === 'To Do' || statusFilter === 'PLANNED'
+                  ? 'bg-amber-400 text-black font-semibold'
+                  : 'bg-[#1c1c1c] text-amber-400/80 hover:text-amber-300 border border-[#383838]'
+              }`}
+            >
+              To Do ({counts.toDo})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('Doing')}
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                statusFilter === 'Doing' || statusFilter === 'IN_PROGRESS'
+                  ? 'bg-blue-500 text-white font-semibold'
+                  : 'bg-[#1c1c1c] text-blue-400/80 hover:text-blue-300 border border-[#383838]'
+              }`}
+            >
+              Doing ({counts.doing})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('Done')}
+              className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+                statusFilter === 'Done' || statusFilter === 'COMPLETED'
+                  ? 'bg-emerald-500 text-white font-semibold'
+                  : 'bg-[#1c1c1c] text-emerald-400/80 hover:text-emerald-300 border border-[#383838]'
+              }`}
+            >
+              Done ({counts.done})
+            </button>
           </div>
 
-          {/* Topics CRUD Table */}
-          {filteredSessions.length > 0 ? (
-            <div className="rounded-xl border border-[#383838] overflow-hidden bg-[#242424] shadow-md">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-[#1c1c1c] text-gray-400 font-semibold border-b border-[#383838] text-xs uppercase tracking-wider">
-                    <tr>
-                      <th className="py-3 px-4">Topic & Category</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4">ChatGPT Links</th>
-                      <th className="py-3 px-4">Practice Attempts</th>
-                      <th className="py-3 px-4">Best Score</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#2f2f2f] text-gray-300">
-                    {filteredSessions.map((session) => {
-                      const preset = getPresetTopicByName(session.topic);
-                      const icon = preset ? preset.icon : '💬';
-                      const linkCount = session.allChatgptUrls?.length || 1;
-                      const attemptCount = session.attemptCount ?? 0;
+          <div className="hidden sm:flex items-center gap-1 border-l border-[#3a3a3a] pl-2">
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-lg transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-[#333333] text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+              title="Table view"
+              aria-label="Table view"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('cards')}
+              className={`p-1.5 rounded-lg transition-colors ${
+                viewMode === 'cards'
+                  ? 'bg-[#333333] text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+              title="Cards view"
+              aria-label="Cards view"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
 
-                      return (
-                        <tr
-                          key={session.id}
-                          className="hover:bg-[#2a2a2a] transition-colors group"
-                        >
-                          {/* Column 1: Topic */}
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-start gap-2.5">
-                              <span className="text-xl shrink-0 mt-0.5">{icon}</span>
-                              <div>
-                                <Link
-                                  href={`/sessions/${session.id}`}
-                                  className="font-bold text-white hover:text-blue-300 hover:underline transition-colors block"
-                                >
-                                  {session.topic}
-                                </Link>
-                                {session.notes ? (
-                                  <p className="text-xs text-gray-400 line-clamp-1 mt-0.5 max-w-sm">
-                                    {session.notes}
-                                  </p>
-                                ) : preset ? (
-                                  <p className="text-xs text-gray-500 line-clamp-1 mt-0.5 max-w-sm">
-                                    {preset.description}
-                                  </p>
-                                ) : null}
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Column 2: Status */}
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            <StatusBadge status={session.status} size="sm" />
-                          </td>
-
-                          {/* Column 3: Links */}
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#1a1a1a] border border-[#333333] text-xs font-medium text-gray-300">
-                              <LinkIcon className="w-3.5 h-3.5 text-blue-400" />
-                              <span>{linkCount} {linkCount === 1 ? 'link' : 'links'}</span>
-                            </div>
-                          </td>
-
-                          {/* Column 4: Attempts */}
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            <div className="flex flex-col">
-                              <span className="text-xs font-semibold text-gray-200">
-                                {attemptCount} {attemptCount === 1 ? 'attempt' : 'attempts'}
-                              </span>
-                              {session.practicedAt && (
-                                <span className="text-[11px] text-gray-400">
-                                  {formatDate(session.practicedAt)}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Column 5: Best Score */}
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            <ScoreDisplay score={session.score} size="sm" />
-                          </td>
-
-                          {/* Column 6: Actions */}
-                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                            <div className="inline-flex items-center gap-1.5 justify-end">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleGoToWorkspace(session.topic)}
-                                title="Open in practice workspace"
-                                className="h-8 px-2.5 text-xs text-blue-300 border-blue-900/60 hover:bg-blue-950/30"
-                              >
-                                Practice
-                              </Button>
-
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setEditingSession(session)}
-                                title="Edit topic details"
-                                className="h-8 px-2 text-xs text-gray-300 hover:text-white"
-                              >
-                                <Edit2 className="w-3.5 h-3.5 mr-1" />
-                                Edit
-                              </Button>
-
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setDeletingSession(session)}
-                                title="Delete topic"
-                                className="h-8 px-2 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/20"
-                              >
-                                <Trash2 className="w-3.5 h-3.5 mr-1" />
-                                Delete
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-[#262626] border border-[#383838] rounded-xl p-8 text-center space-y-3">
-              <FolderPlus className="w-10 h-10 mx-auto text-gray-500" />
-              <h3 className="text-base font-bold text-gray-200">
-                {searchQuery || statusFilter !== 'ALL'
-                  ? 'No topics match your filters'
-                  : 'No speaking topics added yet'}
-              </h3>
-              <p className="text-xs text-gray-400 max-w-md mx-auto">
-                {searchQuery || statusFilter !== 'ALL'
-                  ? 'Try clearing the search query or changing your status filter.'
-                  : 'Add your first topic with its ChatGPT conversation link to start tracking your practice attempts.'}
-              </p>
+      {/* Practice Sessions Content */}
+      {filteredSessions.length > 0 ? (
+        viewMode === 'table' ? (
+          <SessionTable
+            sessions={filteredSessions}
+            onEdit={(s) => setEditingSession(s)}
+            onDelete={(s) => setDeletingSession(s)}
+            onRecordResult={(s) => setResultSession(s)}
+            onStatusChange={handleStatusChange}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredSessions.map((session) => (
+              <SessionCard
+                key={session.id}
+                session={session}
+                onEdit={(s) => setEditingSession(s)}
+                onDelete={(s) => setDeletingSession(s)}
+                onRecordResult={(s) => setResultSession(s)}
+                onStatusChange={handleStatusChange}
+              />
+            ))}
+          </div>
+        )
+      ) : sessions.length > 0 ? (
+        /* Filter matched 0 results */
+        <div className="bg-[#262626] border border-[#383838] rounded-xl p-8 text-center space-y-3">
+          <FolderPlus className="w-10 h-10 mx-auto text-gray-500" />
+          <h3 className="text-base font-bold text-gray-200">
+            No sessions match your filter
+          </h3>
+          <p className="text-xs text-gray-400 max-w-md mx-auto">
+            {selectedTopicFilter !== 'ALL'
+              ? `Chưa có lần luyện nói nào cho chủ đề "${selectedTopicFilter}". Bấm nút bên dưới để bắt đầu luyện nói với chủ đề này.`
+              : 'Try clearing your search query or changing your status filter.'}
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            {selectedTopicFilter !== 'ALL' && (
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => handleOpenAddWithTopic()}
-                className="mt-2"
+                onClick={() => handleOpenAddWithTopic(selectedTopicFilter)}
               >
                 <Plus className="w-4 h-4 mr-1.5" />
-                Add Session / Topic
+                Luyện nói chủ đề &quot;{selectedTopicFilter}&quot;
               </Button>
-            </div>
-          )}
-
-          {/* Quick Preset Topics Directory */}
-          <div className="bg-[#1f1f1f] border border-[#333333] rounded-xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-gray-200">
-                  Quick Add From Standard Preset Speaking Topics
-                </h3>
-                <p className="text-xs text-gray-400">
-                  Click any standard IELTS/CEFR B2 speaking topic to immediately create or practice it.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 pt-1">
-              {PRESET_TOPICS.map((preset) => {
-                const existing = sessions.find(
-                  (s) => s.topic.trim().toLowerCase() === preset.name.trim().toLowerCase(),
-                );
-                return (
-                  <button
-                    key={preset.name}
-                    type="button"
-                    onClick={() => {
-                      if (existing) {
-                        handleGoToWorkspace(existing.topic);
-                      } else {
-                        handleOpenAddWithTopic(preset.name);
-                      }
-                    }}
-                    className={`p-2.5 rounded-lg border text-left flex flex-col justify-between transition-colors ${
-                      existing
-                        ? 'bg-[#292929] border-[#444444] text-white hover:border-gray-300'
-                        : 'bg-[#181818] border-[#2e2e2e] text-gray-400 hover:text-white hover:border-[#444444]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg">{preset.icon}</span>
-                      {existing ? (
-                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/50">
-                          Active
-                        </span>
-                      ) : (
-                        <Plus className="w-3.5 h-3.5 text-gray-500" />
-                      )}
-                    </div>
-                    <span className="text-xs font-semibold mt-2 line-clamp-1">
-                      {preset.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedTopicFilter('ALL');
+                setSearchQuery('');
+                setStatusFilter('ALL');
+              }}
+            >
+              Clear Filters
+            </Button>
           </div>
         </div>
       ) : (
-        /* =================== TAB 2: PRACTICE LINKS WORKSPACE =================== */
-        <TopicLinkManager
-          sessions={sessions}
-          onRefresh={loadTopics}
-          onRecordResult={handleRecordResult}
-          onEditSession={(s) => setEditingSession(s)}
-          onDeleteSession={(s) => setDeletingSession(s)}
-          onOpenAddSession={handleOpenAddWithTopic}
-          initialSelectedTopic={selectedTopicForWorkspace}
-        />
+        /* Empty State: 0 sessions in library */
+        <div className="space-y-6">
+          <div className="bg-[#262626] border border-[#383838] rounded-xl p-8 sm:p-10 text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-950/60 border border-blue-800/40 text-blue-400 mx-auto flex items-center justify-center">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-gray-100">
+                Chưa có lần luyện nói nào với ChatGPT
+              </h3>
+              <p className="text-sm text-gray-400 max-w-lg mx-auto">
+                Bắt đầu đơn giản bằng cách chọn một chủ đề bên dưới hoặc bấm &quot;Thêm lần luyện nói&quot; để lưu link ChatGPT kèm điểm số của bạn.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => handleOpenAddWithTopic()}
+              className="mt-2"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Thêm lần luyện nói mới
+            </Button>
+          </div>
+
+          {/* Quick Select Preset Topic Grid */}
+          <div className="bg-[#1f1f1f] border border-[#333333] rounded-xl p-5 space-y-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-200">
+                Chọn chủ đề để bắt đầu luyện nói (Topic Selections)
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Bấm vào một chủ đề để mở form thêm lần luyện nói với ChatGPT:
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 pt-1">
+              {PRESET_TOPICS.map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => handleOpenAddWithTopic(preset.name)}
+                  className="p-3 rounded-lg border bg-[#181818] border-[#2e2e2e] text-left flex flex-col justify-between hover:bg-[#242424] hover:border-gray-500 transition-all group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">{preset.icon}</span>
+                    <Plus className="w-4 h-4 text-gray-500 group-hover:text-white transition-colors" />
+                  </div>
+                  <div className="mt-2">
+                    <span className="text-xs font-bold text-gray-200 group-hover:text-blue-300 block truncate">
+                      {preset.name}
+                    </span>
+                    <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">
+                      {preset.description}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Dialogs */}
@@ -476,25 +486,21 @@ export function TopicsPageContent({
           setIsAddOpen(false);
           setInitialTopicForAdd(undefined);
         }}
-        onSuccess={loadTopics}
+        onSuccess={loadSessions}
       />
 
       <SessionFormDialog
         isOpen={Boolean(editingSession)}
         sessionToEdit={editingSession}
         onClose={() => setEditingSession(null)}
-        onSuccess={loadTopics}
+        onSuccess={loadSessions}
       />
 
       <RecordResultDialog
         isOpen={Boolean(resultSession)}
         session={resultSession}
-        initialUrl={selectedUrlForResult}
-        onClose={() => {
-          setResultSession(null);
-          setSelectedUrlForResult(undefined);
-        }}
-        onSuccess={loadTopics}
+        onClose={() => setResultSession(null)}
+        onSuccess={loadSessions}
       />
 
       <ConfirmDialog
@@ -502,9 +508,9 @@ export function TopicsPageContent({
         onClose={() => setDeletingSession(null)}
         onConfirm={handleConfirmDelete}
         isLoading={isDeleting}
-        title="Delete Topic"
-        message={`Are you sure you want to delete "${deletingSession?.topic}"? This removes the topic and its saved links from your manager. (Your ChatGPT conversations remain safe in ChatGPT).`}
-        confirmLabel="Delete Topic"
+        title="Delete Session"
+        message={`Are you sure you want to delete session "${deletingSession?.topic}"? This removes the session link and score from your manager. (Your ChatGPT conversations remain safe in ChatGPT).`}
+        confirmLabel="Delete Session"
       />
     </div>
   );

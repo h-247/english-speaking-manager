@@ -10,6 +10,7 @@ import {
 export interface TopicGroupedLink {
   url: string;
   isPrimary?: boolean;
+  status?: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string;
   attemptNumbers: number[];
   attemptCount: number;
   bestScore: number | null;
@@ -39,7 +40,7 @@ export interface SessionItem {
   branchUrls?: string[];
   allChatgptUrls?: string[];
   groupedLinks?: TopicGroupedLink[];
-  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
+  status: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string;
   notes: string | null;
   tags: string[];
   passCount: number | null;
@@ -57,7 +58,11 @@ export interface DashboardData {
   plannedSessions: number;
   inProgressSessions: number;
   completedSessions: number;
+  toDoSessions?: number;
+  doingSessions?: number;
+  doneSessions?: number;
   averageCompletedScore: number | null;
+  averageDoneScore?: number | null;
   totalPass: number;
   totalFail: number;
   recentSessions: SessionItem[];
