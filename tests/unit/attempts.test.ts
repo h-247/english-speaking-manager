@@ -152,6 +152,10 @@ describe('Topic grouping of ChatGPT links and practice attempts', () => {
     expect(linkMap.get('https://chatgpt.com/c/main-chat')?.bestScore).toBe(8.0);
     expect(linkMap.get('https://chatgpt.com/c/branch-chat-1')?.attemptCount).toBe(2);
     expect(linkMap.get('https://chatgpt.com/c/branch-chat-1')?.bestScore).toBe(9.6);
+
+    // Topic score is the highest score across all ChatGPT links
+    const topicScore = Math.max(...Array.from(linkMap.values()).map(l => l.bestScore));
+    expect(topicScore).toBe(9.6);
   });
 });
 

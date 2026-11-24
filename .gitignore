@@ -20,7 +20,11 @@ test-results/
 .DS_Store
 Thumbs.db
 
-# Database files
+# Database files & local persistence backups
 *.db
 *.sqlite
 *.sqlite3
+.data-backup/
+.db-backup/
+.user_uploaded/
+

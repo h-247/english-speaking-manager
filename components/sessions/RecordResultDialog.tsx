@@ -61,10 +61,7 @@ export function RecordResultDialog({
           ? String(session.score)
           : '',
       );
-      const initialStatus = session.status === 'Doing' || session.status === 'To Do'
-        ? (session.status as 'To Do' | 'Doing')
-        : 'Done';
-      setStatus(initialStatus);
+      setStatus('Done');
       setPracticedDate(toLocalDatetimeInputValue(new Date()));
       setNotes('');
       setChatgptUrl(initialUrl || '');
@@ -81,7 +78,7 @@ export function RecordResultDialog({
     const newErrors: { score?: string; chatgptUrl?: string } = {};
 
     if (scoreStr === '' || isNaN(Number(scoreStr)) || Number(scoreStr) < 0 || Number(scoreStr) > 10) {
-      newErrors.score = 'Vui lòng nhập điểm hợp lệ từ 0 đến 10.';
+      newErrors.score = 'Please enter a valid score between 0 and 10.';
     }
     if (chatgptUrl.trim()) {
       const validation = validateChatGPTUrl(chatgptUrl.trim());
@@ -127,7 +124,7 @@ export function RecordResultDialog({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Record Practice Score (Ghi điểm luyện nói)"
+      title="Record Practice Score"
       description={`Enter score (0 - 10) and status for "${session.topic}".`}
       maxWidth="md"
     >
@@ -135,7 +132,7 @@ export function RecordResultDialog({
         {/* Score & Status Inputs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
-            label="Score / Điểm số (0 - 10)"
+            label="Score (0 - 10)"
             id="score"
             type="number"
             min="0"
@@ -150,12 +147,12 @@ export function RecordResultDialog({
               setErrors((prev) => ({ ...prev, score: undefined }));
             }}
             error={errors.score}
-            helperText="Nhập điểm số từ 0.0 đến 10.0"
+            helperText="Enter score from 0.0 to 10.0"
           />
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor="sessionStatusSelect" className="text-xs font-semibold text-gray-300">
-              Trạng thái (Status)
+              Status
             </label>
             <select
               id="sessionStatusSelect"
@@ -167,7 +164,7 @@ export function RecordResultDialog({
               <option value="Doing">Doing</option>
               <option value="Done">Done</option>
             </select>
-            <span className="text-[11px] text-gray-400">Trạng thái sau lần luyện nói</span>
+            <span className="text-[11px] text-gray-400">Status after this practice session</span>
           </div>
         </div>
 
@@ -182,7 +179,7 @@ export function RecordResultDialog({
                 Speaking Score
               </span>
               <span className="text-[11px] text-gray-400 font-mono">
-                Thang điểm 10
+                Scale of 10
               </span>
             </div>
           </div>

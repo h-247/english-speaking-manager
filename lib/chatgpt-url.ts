@@ -90,8 +90,16 @@ export function validateChatGPTUrl(rawUrl: string): URLValidationResult {
  * - Removes fragments (#)
  */
 export function normalizeChatGPTUrl(rawUrl: string): string {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
   const trimmed = rawUrl.trim();
-  const parsed = new URL(trimmed);
+  if (!trimmed) return '';
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return '';
+  }
 
   // Normalize host: standardize chat.openai.com -> chatgpt.com
   let host = parsed.hostname.toLowerCase();

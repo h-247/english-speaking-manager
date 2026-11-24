@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { calculateScore, formatScore } from '@/lib/scoring';
-import { createSession, updateSession, SessionItem } from '@/lib/api-client';
+import { createSession, updateSession, SessionItem, TopicItem } from '@/lib/api-client';
 import { PRESET_TOPICS } from '@/lib/preset-topics';
 import { useToast } from '@/components/ui/Toast';
 
@@ -17,6 +17,7 @@ export interface SessionFormDialogProps {
   onClose: () => void;
   sessionToEdit?: SessionItem | null;
   initialTopic?: string;
+  topics?: TopicItem[];
   onSuccess: () => void;
 }
 
@@ -25,6 +26,7 @@ export function SessionFormDialog({
   onClose,
   sessionToEdit,
   initialTopic,
+  topics,
   onSuccess,
 }: SessionFormDialogProps) {
   const { showSuccess, showError } = useToast();
@@ -40,6 +42,21 @@ export function SessionFormDialog({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+
+  const allTopicOptions = React.useMemo(() => {
+    const map = new Map<string, { name: string; icon: string }>();
+    if (topics && topics.length > 0) {
+      for (const t of topics) {
+        map.set(t.name.toLowerCase(), { name: t.name, icon: t.icon });
+      }
+    }
+    for (const p of PRESET_TOPICS) {
+      if (!map.has(p.name.toLowerCase())) {
+        map.set(p.name.toLowerCase(), { name: p.name, icon: p.icon });
+      }
+    }
+    return Array.from(map.values());
+  }, [topics]);
 
   useEffect(() => {
     if (sessionToEdit) {
@@ -102,11 +119,13 @@ export function SessionFormDialog({
       newErrors.topic = 'Topic is required.';
     }
 
-    const urlValidation = validateChatGPTUrl(chatgptUrl);
-    if (!urlValidation.isValid) {
-      newErrors.chatgptUrl =
-        urlValidation.error ||
-        'Please enter a valid official HTTPS ChatGPT link (e.g. https://chatgpt.com/c/...)';
+    if (chatgptUrl.trim()) {
+      const urlValidation = validateChatGPTUrl(chatgptUrl);
+      if (!urlValidation.isValid) {
+        newErrors.chatgptUrl =
+          urlValidation.error ||
+          'Please enter a valid official HTTPS ChatGPT link (e.g. https://chatgpt.com/c/...)';
+      }
     }
 
     if (scoreStr !== '') {
@@ -186,12 +205,12 @@ export function SessionFormDialog({
         <div className="space-y-2">
           <div>
             <label htmlFor="topic-select" className="block text-xs font-medium text-gray-300 mb-1">
-              Select Preset Topic (Chọn chủ đề có sẵn)
+              Select Preset Topic
             </label>
             <select
               id="topic-select"
               aria-label="Select Preset Topic"
-              value={PRESET_TOPICS.some((p) => p.name.toLowerCase() === topic.toLowerCase()) ? topic : 'custom'}
+              value={allTopicOptions.some((p) => p.name.toLowerCase() === topic.toLowerCase()) ? topic : 'custom'}
               onChange={(e) => {
                 if (e.target.value !== 'custom') {
                   setTopic(e.target.value);
@@ -205,7 +224,7 @@ export function SessionFormDialog({
               className="w-full bg-[#1a1a1a] border border-[#383838] focus:border-white focus:ring-1 focus:ring-white rounded-lg px-3 py-2 text-sm text-[#ececec] outline-none transition-colors"
             >
               <option value="custom">-- Select topic from standard list or type custom below --</option>
-              {PRESET_TOPICS.map((p) => (
+              {allTopicOptions.map((p) => (
                 <option key={p.name} value={p.name}>
                   {p.icon} {p.name}
                 </option>
@@ -233,10 +252,9 @@ export function SessionFormDialog({
         </div>
 
         <Input
-          label="ChatGPT Conversation URL"
-          required
+          label="ChatGPT Conversation URL (Optional)"
           type="url"
-          placeholder="https://chatgpt.com/c/your-conversation-id"
+          placeholder="https://chatgpt.com/c/your-conversation-id (Leave empty if not started yet)"
           value={chatgptUrl}
           onChange={(e) => {
             setChatgptUrl(e.target.value);
@@ -276,7 +294,7 @@ export function SessionFormDialog({
         <div className="p-3.5 rounded-xl bg-[#1c1c1c] border border-[#333333] space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-300">
-              Practice Score / Điểm số (0 - 10)
+              Practice Score (0 - 10)
             </span>
             {parsedScore !== null && (
               <span className="text-xs font-mono font-bold text-emerald-400">
@@ -287,7 +305,7 @@ export function SessionFormDialog({
 
           <Input
             id="scoreInput"
-            label="Score (Điểm số)"
+            label="Score"
             type="number"
             min="0"
             max="10"
@@ -303,7 +321,7 @@ export function SessionFormDialog({
               });
             }}
             error={errors.score}
-            helperText="Nhập điểm số từ 0 đến 10 cho lần luyện nói này"
+            helperText="Enter a score from 0 to 10 for this practice session"
           />
 
           <Input

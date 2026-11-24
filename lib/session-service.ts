@@ -10,7 +10,7 @@ import {
   UpdateAttemptInput,
   ImportPayload,
 } from '@/lib/validation';
-import { eq, and, desc, asc, like, or, sql, not } from 'drizzle-orm';
+import { eq, and, desc, asc, like, or, sql, not, inArray } from 'drizzle-orm';
 
 export interface ListSessionsOptions {
   search?: string;
@@ -127,6 +127,7 @@ export class SessionService {
         .select({
           sessionId: schema.practiceAttempts.sessionId,
           count: sql<number>`count(*)`,
+          maxScore: sql<number>`max(${schema.practiceAttempts.score})`,
         })
         .from(schema.practiceAttempts)
         .where(eq(schema.practiceAttempts.userId, userId))
@@ -135,16 +136,52 @@ export class SessionService {
 
     const total = countResult[0]?.count ?? 0;
 
-    const attemptMap = new Map<string, number>();
+    const attemptMap = new Map<string, { count: number; maxScore: number | null }>();
     for (const a of attemptCounts) {
-      attemptMap.set(a.sessionId, a.count);
+      attemptMap.set(a.sessionId, { count: a.count, maxScore: a.maxScore });
+    }
+
+    const sessionIds = sessions.map((s) => s.id);
+    let allAttempts: (typeof schema.practiceAttempts.$inferSelect)[] = [];
+    if (sessionIds.length > 0) {
+      allAttempts = await db
+        .select()
+        .from(schema.practiceAttempts)
+        .where(
+          and(
+            eq(schema.practiceAttempts.userId, userId),
+            inArray(schema.practiceAttempts.sessionId, sessionIds),
+          ),
+        )
+        .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt));
+    }
+
+    const attemptsBySession = new Map<string, typeof allAttempts>();
+    for (const att of allAttempts) {
+      const list = attemptsBySession.get(att.sessionId) || [];
+      list.push(att);
+      attemptsBySession.set(att.sessionId, list);
     }
 
     return {
-      sessions: sessions.map((s) => ({
-        ...deserializeSession(s),
-        attemptCount: attemptMap.get(s.id) || (s.score !== null ? 1 : 0),
-      })),
+      sessions: sessions.map((s) => {
+        const attInfo = attemptMap.get(s.id);
+        const sAttempts = attemptsBySession.get(s.id) || [];
+        const deserialized = deserializeSession(s);
+        const finalScore =
+          attInfo?.maxScore !== null && attInfo?.maxScore !== undefined
+            ? attInfo.maxScore
+            : deserialized.score;
+        const groupedLinks = buildGroupedLinks(deserialized, sAttempts);
+        return {
+          ...deserialized,
+          score: finalScore,
+          attemptCount: attInfo?.count || (finalScore !== null ? 1 : 0),
+          attempts: sAttempts,
+          groupedLinks,
+          allChatgptUrls: groupedLinks.map((l) => l.url),
+        };
+      }),
       total,
       limit,
       offset,
@@ -183,104 +220,19 @@ export class SessionService {
       .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt));
 
     const deserialized = deserializeSession(session);
+    const groupedLinks = buildGroupedLinks(deserialized, attempts);
 
-    // Group all ChatGPT links for this Topic with metadata
-    const linkMap = new Map<
-      string,
-      {
-        url: string;
-        attemptNumbers: number[];
-        attempts: typeof attempts;
-        bestScore: number | null;
-        latestPracticedAt: string | null;
-      }
-    >();
-
-    if (deserialized.chatgptUrl) {
-      linkMap.set(deserialized.chatgptUrl, {
-        url: deserialized.chatgptUrl,
-        attemptNumbers: [],
-        attempts: [],
-        bestScore: null,
-        latestPracticedAt: deserialized.practicedAt || null,
-      });
-    }
-
-    const branchStatusMap = new Map<string, string>();
-    for (const b of (deserialized.branchUrls as any[])) {
-      const url = typeof b === 'string' ? b : b?.url;
-      const st = typeof b === 'object' && b?.status ? b.status : undefined;
-      if (url) {
-        if (st) branchStatusMap.set(url, st);
-        if (!linkMap.has(url)) {
-          linkMap.set(url, {
-            url,
-            attemptNumbers: [],
-            attempts: [],
-            bestScore: null,
-            latestPracticedAt: null,
-          });
-        }
-      }
-    }
-
-    attempts.forEach((att, index) => {
-      const attNum = attempts.length - index;
-      const attUrl = att.chatgptUrl || deserialized.chatgptUrl;
-      if (attUrl) {
-        let entry = linkMap.get(attUrl);
-        if (!entry) {
-          entry = {
-            url: attUrl,
-            attemptNumbers: [],
-            attempts: [],
-            bestScore: null,
-            latestPracticedAt: null,
-          };
-          linkMap.set(attUrl, entry);
-        }
-        entry.attemptNumbers.push(attNum);
-        entry.attempts.push(att);
-        if (entry.bestScore === null || att.score > entry.bestScore) {
-          entry.bestScore = att.score;
-        }
-        if (
-          !entry.latestPracticedAt ||
-          new Date(att.practicedAt).getTime() > new Date(entry.latestPracticedAt).getTime()
-        ) {
-          entry.latestPracticedAt = att.practicedAt;
-        }
-      }
-    });
-
-    const groupedLinks = Array.from(linkMap.values()).map((item) => {
-      let status: 'To Do' | 'Doing' | 'Done' = 'To Do';
-      if (branchStatusMap.has(item.url)) {
-        const bs = branchStatusMap.get(item.url)!;
-        status = bs === 'COMPLETED' ? 'Done' : bs === 'IN_PROGRESS' ? 'Doing' : bs === 'PLANNED' ? 'To Do' : (bs as any);
-      } else if (item.url === deserialized.chatgptUrl) {
-        status =
-          deserialized.status === 'Doing' || deserialized.status === 'IN_PROGRESS'
-            ? 'Doing'
-            : deserialized.status === 'Done' || deserialized.status === 'COMPLETED'
-              ? 'Done'
-              : 'To Do';
-      } else if (item.attempts.length > 0) {
-        status = item.bestScore !== null && item.bestScore >= 8 ? 'Done' : 'Doing';
-      }
-      return {
-        ...item,
-        status,
-        attemptNumbers: item.attemptNumbers.sort((a, b) => a - b),
-        attemptCount: item.attemptNumbers.length,
-      };
-    });
+    const highestScore =
+      attempts.length > 0
+        ? Math.max(...attempts.map((a) => a.score))
+        : deserialized.score;
 
     return {
       ...deserialized,
+      score: highestScore,
       attempts,
-      attemptCount: attempts.length > 0 ? attempts.length : session.score !== null ? 1 : 0,
-      allChatgptUrls: Array.from(linkMap.keys()),
+      attemptCount: attempts.length > 0 ? attempts.length : deserialized.score !== null ? 1 : 0,
+      allChatgptUrls: groupedLinks.map((l) => l.url),
       groupedLinks,
     };
   }
@@ -292,24 +244,27 @@ export class SessionService {
     await ensureDatabaseInitialized();
     const db = getDb();
 
-    const normalizedUrl = normalizeChatGPTUrl(input.chatgptUrl);
+    const rawUrl = input.chatgptUrl ? input.chatgptUrl.trim() : '';
+    const normalizedUrl = normalizeChatGPTUrl(rawUrl);
 
-    // Duplicate detection for the same user
-    const [existing] = await db
-      .select({ id: schema.practiceSessions.id })
-      .from(schema.practiceSessions)
-      .where(
-        and(
-          eq(schema.practiceSessions.userId, userId),
-          eq(schema.practiceSessions.normalizedUrl, normalizedUrl),
-        ),
-      )
-      .limit(1);
+    // Duplicate detection for the same user only when URL is non-empty
+    if (normalizedUrl) {
+      const [existing] = await db
+        .select({ id: schema.practiceSessions.id })
+        .from(schema.practiceSessions)
+        .where(
+          and(
+            eq(schema.practiceSessions.userId, userId),
+            eq(schema.practiceSessions.normalizedUrl, normalizedUrl),
+          ),
+        )
+        .limit(1);
 
-    if (existing) {
-      throw new Error(
-        'A practice session with this ChatGPT conversation link already exists in your library.',
-      );
+      if (existing) {
+        throw new Error(
+          'A practice session with this ChatGPT conversation link already exists in your library.',
+        );
+      }
     }
 
     const id = crypto.randomUUID();
@@ -336,10 +291,11 @@ export class SessionService {
       id,
       userId,
       topic: input.topic.trim(),
-      chatgptUrl: input.chatgptUrl.trim(),
+      chatgptUrl: rawUrl,
       normalizedUrl,
       branchUrls: branchUrlsJson,
       status: input.status ?? 'To Do',
+      chatgptUrlStatus: input.chatgptUrlStatus ?? 'To Do',
       notes: input.notes?.trim() || null,
       tags: tagsJson,
       passCount,
@@ -362,7 +318,7 @@ export class SessionService {
         failCount: failCount ?? Math.round((10 - score) * 10),
         score,
         notes: input.notes?.trim() || null,
-        chatgptUrl: input.chatgptUrl.trim(),
+        chatgptUrl: rawUrl || null,
         practicedAt: practicedAt || now,
         createdAt: now,
       });
@@ -411,31 +367,39 @@ export class SessionService {
     }
 
     if (input.chatgptUrl !== undefined) {
-      const normalizedUrl = normalizeChatGPTUrl(input.chatgptUrl);
-      const [duplicate] = await db
-        .select({ id: schema.practiceSessions.id })
-        .from(schema.practiceSessions)
-        .where(
-          and(
-            eq(schema.practiceSessions.userId, userId),
-            eq(schema.practiceSessions.normalizedUrl, normalizedUrl),
-            not(eq(schema.practiceSessions.id, sessionId)),
-          ),
-        )
-        .limit(1);
+      const rawUrl = input.chatgptUrl ? input.chatgptUrl.trim() : '';
+      const normalizedUrl = normalizeChatGPTUrl(rawUrl);
+      if (normalizedUrl) {
+        const [duplicate] = await db
+          .select({ id: schema.practiceSessions.id })
+          .from(schema.practiceSessions)
+          .where(
+            and(
+              eq(schema.practiceSessions.userId, userId),
+              eq(schema.practiceSessions.normalizedUrl, normalizedUrl),
+              not(eq(schema.practiceSessions.id, sessionId)),
+            ),
+          )
+          .limit(1);
 
-      if (duplicate) {
-        throw new Error(
-          'Another practice session with this ChatGPT conversation link already exists.',
-        );
+        if (duplicate) {
+          throw new Error(
+            'Another practice session with this ChatGPT conversation link already exists.',
+          );
+        }
       }
 
-      updates.chatgptUrl = input.chatgptUrl.trim();
+      updates.chatgptUrl = rawUrl;
       updates.normalizedUrl = normalizedUrl;
     }
 
     if (input.status !== undefined) {
-      updates.status = input.status;
+      updates.status = (input.status as string) === 'To do' ? 'To Do' : input.status;
+    }
+
+    if (input.chatgptUrlStatus !== undefined) {
+      updates.chatgptUrlStatus =
+        (input.chatgptUrlStatus as string) === 'To do' ? 'To Do' : input.chatgptUrlStatus;
     }
 
     if (input.notes !== undefined) {
@@ -448,9 +412,16 @@ export class SessionService {
     }
 
     if (input.branchUrls !== undefined) {
+      const normalizedBranches = input.branchUrls.map((b) => {
+        if (typeof b === 'object' && b !== null && 'status' in b) {
+          const st = (b.status as string) === 'To do' ? 'To Do' : b.status;
+          return { ...b, status: st };
+        }
+        return b;
+      });
       updates.branchUrls =
-        input.branchUrls && input.branchUrls.length > 0
-          ? JSON.stringify(input.branchUrls)
+        normalizedBranches && normalizedBranches.length > 0
+          ? JSON.stringify(normalizedBranches)
           : null;
     }
 
@@ -464,6 +435,15 @@ export class SessionService {
 
     if (input.passCount !== undefined || input.failCount !== undefined) {
       updates.score = calculateScore(newPass, newFail);
+    } else if (input.score !== undefined) {
+      updates.score = input.score !== null ? Math.round(input.score * 10) / 10 : null;
+      if (input.score !== null) {
+        if (updates.passCount === undefined) updates.passCount = Math.round(input.score * 10);
+        if (updates.failCount === undefined) updates.failCount = Math.round((10 - input.score) * 10);
+      } else {
+        updates.passCount = null;
+        updates.failCount = null;
+      }
     }
 
     if (input.practicedAt !== undefined) {
@@ -602,21 +582,32 @@ export class SessionService {
       currentBranches.push(attemptChatgptUrl);
     }
 
-    // Update parent session with latest attempt score, counts, practicedAt, status
-    const newStatus =
-      input.status ||
-      (input.markCompleted
-        ? 'Done'
-        : session.status === 'To Do' || session.status === 'PLANNED'
-          ? 'Doing'
-          : session.status);
+    // Query all attempts for this session to ensure topic's score is the highest score
+    const allAttempts = await db
+      .select({ score: schema.practiceAttempts.score })
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.userId, userId),
+          eq(schema.practiceAttempts.sessionId, sessionId),
+        ),
+      );
+
+    const highestScore =
+      allAttempts.length > 0
+        ? Math.max(...allAttempts.map((a) => a.score))
+        : score;
+
+    // Topic status is independent of ChatGPT link status / practice attempts.
+    // Preserve current session.status unless explicitly specified in input.
+    const newStatus = input.status || session.status;
 
     await db
       .update(schema.practiceSessions)
       .set({
         passCount,
         failCount,
-        score,
+        score: highestScore,
         practicedAt,
         status: newStatus,
         branchUrls: currentBranches.length > 0 ? JSON.stringify(currentBranches) : session.branchUrls,
@@ -696,6 +687,21 @@ export class SessionService {
       .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt))
       .limit(1);
 
+    const remainingAttempts = await db
+      .select({ score: schema.practiceAttempts.score })
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      );
+
+    const highestScore =
+      remainingAttempts.length > 0
+        ? Math.max(...remainingAttempts.map((a) => a.score))
+        : null;
+
     const now = new Date().toISOString();
     if (latest) {
       await db
@@ -703,7 +709,7 @@ export class SessionService {
         .set({
           passCount: latest.passCount,
           failCount: latest.failCount,
-          score: latest.score,
+          score: highestScore,
           practicedAt: latest.practicedAt,
           updatedAt: now,
         })
@@ -844,6 +850,21 @@ export class SessionService {
       .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt))
       .limit(1);
 
+    const allSessionAttempts = await db
+      .select({ score: schema.practiceAttempts.score })
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      );
+
+    const highestScore =
+      allSessionAttempts.length > 0
+        ? Math.max(...allSessionAttempts.map((a) => a.score))
+        : null;
+
     if (latest && latest.id === attemptId) {
       const now = new Date().toISOString();
       await db
@@ -851,7 +872,7 @@ export class SessionService {
         .set({
           passCount: latest.passCount,
           failCount: latest.failCount,
-          score: latest.score,
+          score: highestScore,
           practicedAt: latest.practicedAt,
           updatedAt: now,
         })
@@ -870,6 +891,126 @@ export class SessionService {
       .limit(1);
 
     return updatedAttempt;
+  }
+
+  /**
+   * Deletes a specific ChatGPT URL from a topic/session and cleans up its associated practice attempts.
+   */
+  static async deleteTopicLink(userId: string, sessionId: string, urlToDelete: string) {
+    await ensureDatabaseInitialized();
+    const db = getDb();
+
+    const [session] = await db
+      .select()
+      .from(schema.practiceSessions)
+      .where(
+        and(
+          eq(schema.practiceSessions.userId, userId),
+          eq(schema.practiceSessions.id, sessionId),
+        ),
+      )
+      .limit(1);
+
+    if (!session) {
+      throw new Error('Session not found or access denied.');
+    }
+
+    const trimmedUrl = urlToDelete.trim();
+    let currentBranches: any[] = [];
+    if (session.branchUrls) {
+      try {
+        currentBranches = JSON.parse(session.branchUrls);
+      } catch {
+        currentBranches = [];
+      }
+    }
+
+    // Determine remaining branch URLs
+    const remainingBranches = currentBranches.filter((b: any) => {
+      const u = typeof b === 'string' ? b : b?.url;
+      return u !== trimmedUrl;
+    });
+
+    let newChatgptUrl = session.chatgptUrl;
+    let newNormalizedUrl = session.normalizedUrl;
+
+    if (session.chatgptUrl === trimmedUrl) {
+      if (remainingBranches.length > 0) {
+        const first = remainingBranches[0];
+        newChatgptUrl = typeof first === 'string' ? first : first.url;
+        newNormalizedUrl = normalizeChatGPTUrl(newChatgptUrl);
+        remainingBranches.shift();
+      } else {
+        newChatgptUrl = 'https://chatgpt.com';
+        newNormalizedUrl = normalizeChatGPTUrl('https://chatgpt.com');
+      }
+    }
+
+    // Delete attempts for this session that used urlToDelete
+    await db
+      .delete(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.userId, userId),
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          or(
+            eq(schema.practiceAttempts.chatgptUrl, trimmedUrl),
+            session.chatgptUrl === trimmedUrl
+              ? sql`${schema.practiceAttempts.chatgptUrl} IS NULL`
+              : sql`0=1`,
+          ),
+        ),
+      );
+
+    // Find latest remaining attempt
+    const [latest] = await db
+      .select()
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      )
+      .orderBy(desc(schema.practiceAttempts.practicedAt), desc(schema.practiceAttempts.createdAt))
+      .limit(1);
+
+    const remainingAttempts = await db
+      .select({ score: schema.practiceAttempts.score })
+      .from(schema.practiceAttempts)
+      .where(
+        and(
+          eq(schema.practiceAttempts.sessionId, sessionId),
+          eq(schema.practiceAttempts.userId, userId),
+        ),
+      );
+
+    const highestScore =
+      remainingAttempts.length > 0
+        ? Math.max(...remainingAttempts.map((a) => a.score))
+        : null;
+
+    const now = new Date().toISOString();
+    await db
+      .update(schema.practiceSessions)
+      .set({
+        chatgptUrl: newChatgptUrl,
+        normalizedUrl: newNormalizedUrl,
+        branchUrls: remainingBranches.length > 0 ? JSON.stringify(remainingBranches) : null,
+        passCount: latest ? latest.passCount : null,
+        failCount: latest ? latest.failCount : null,
+        score: highestScore,
+        practicedAt: latest ? latest.practicedAt : null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.practiceSessions.userId, userId),
+          eq(schema.practiceSessions.id, sessionId),
+        ),
+      );
+
+    return this.getSessionById(userId, sessionId);
   }
 
   /**
@@ -952,14 +1093,32 @@ export class SessionService {
         ? Math.round((completedScoresSum / completedScoredCount) * 10) / 10
         : null;
 
+    const attemptsBySession = new Map<string, any[]>();
+    for (const a of attempts) {
+      const list = attemptsBySession.get(a.sessionId) || [];
+      list.push(a);
+      attemptsBySession.set(a.sessionId, list);
+    }
+
+    const mapWithGroupedLinks = (s: any) => {
+      const deserialized = deserializeSession(s);
+      const sessionAttempts = attemptsBySession.get(s.id) || [];
+      const grouped = buildGroupedLinks(deserialized, sessionAttempts);
+      return {
+        ...deserialized,
+        attempts: sessionAttempts,
+        groupedLinks: grouped,
+      };
+    };
+
     // Recent 5 practice sessions
-    const recentSessions = sessions.slice(0, 5).map(deserializeSession);
+    const recentSessions = sessions.slice(0, 5).map(mapWithGroupedLinks);
 
     // Unfinished sessions: To Do or Doing (or PLANNED/IN_PROGRESS)
     const unfinishedSessions = sessions
       .filter((s) => s.status !== 'Done' && s.status !== 'COMPLETED')
       .slice(0, 5)
-      .map(deserializeSession);
+      .map(mapWithGroupedLinks);
 
     return {
       totalSessions,
@@ -1274,8 +1433,109 @@ function deserializeSession(row: any) {
     ...row,
     tags,
     branchUrls,
+    chatgptUrlStatus: row.chatgptUrlStatus || 'To Do',
     allChatgptUrls: Array.from(distinctUrls),
   };
+}
+
+/**
+ * Builds grouped links metadata including bestScore, attempt numbers, and per-link status.
+ */
+function buildGroupedLinks(deserialized: any, attempts: any[]) {
+  const primaryUrl = deserialized.chatgptUrl || '';
+  const primaryRawStatus = deserialized.chatgptUrlStatus || 'To Do';
+  const primaryStatus: 'To Do' | 'Doing' | 'Done' =
+    primaryRawStatus === 'COMPLETED' || primaryRawStatus === 'Done'
+      ? 'Done'
+      : primaryRawStatus === 'IN_PROGRESS' || primaryRawStatus === 'Doing'
+        ? 'Doing'
+        : 'To Do';
+
+  const linkItems: Array<{
+    url: string;
+    status: 'To Do' | 'Doing' | 'Done';
+    attemptNumbers: number[];
+    attempts: any[];
+    bestScore: number | null;
+    latestPracticedAt: string | null;
+  }> = [
+    {
+      url: primaryUrl,
+      status: primaryStatus,
+      attemptNumbers: [],
+      attempts: [],
+      bestScore: null,
+      latestPracticedAt: deserialized.practicedAt || null,
+    },
+  ];
+
+  const rawBranches: any[] = Array.isArray(deserialized.branchUrls)
+    ? deserialized.branchUrls
+    : [];
+
+  for (const b of rawBranches) {
+    const bUrl = typeof b === 'string' ? b : (b?.url || '');
+    const bRawStatus = typeof b === 'object' && b?.status ? b.status : 'To Do';
+    const bStatus: 'To Do' | 'Doing' | 'Done' =
+      bRawStatus === 'COMPLETED' || bRawStatus === 'Done'
+        ? 'Done'
+        : bRawStatus === 'IN_PROGRESS' || bRawStatus === 'Doing'
+          ? 'Doing'
+          : 'To Do';
+
+    linkItems.push({
+      url: bUrl,
+      status: bStatus,
+      attemptNumbers: [],
+      attempts: [],
+      bestScore: null,
+      latestPracticedAt: null,
+    });
+  }
+
+  // Associate attempts with appropriate practice links
+  attempts.forEach((att, index) => {
+    const attNum = attempts.length - index;
+    const attUrl = att.chatgptUrl || '';
+
+    let target = attUrl ? linkItems.find((l) => l.url && l.url === attUrl) : null;
+    if (!target) {
+      if (!attUrl || attUrl === primaryUrl) {
+        target = linkItems[0];
+      } else {
+        target = {
+          url: attUrl,
+          status: 'Done',
+          attemptNumbers: [],
+          attempts: [],
+          bestScore: null,
+          latestPracticedAt: null,
+        };
+        linkItems.push(target);
+      }
+    }
+
+    target.attemptNumbers.push(attNum);
+    target.attempts.push(att);
+    if (target.bestScore === null || att.score > target.bestScore) {
+      target.bestScore = att.score;
+    }
+    if (
+      !target.latestPracticedAt ||
+      new Date(att.practicedAt).getTime() > new Date(target.latestPracticedAt).getTime()
+    ) {
+      target.latestPracticedAt = att.practicedAt;
+    }
+  });
+
+  return linkItems.map((item) => ({
+    url: item.url,
+    status: item.status,
+    attemptNumbers: item.attemptNumbers.sort((a, b) => a - b),
+    attemptCount: item.attemptNumbers.length,
+    bestScore: item.bestScore,
+    latestPracticedAt: item.latestPracticedAt,
+  }));
 }
 
 /**

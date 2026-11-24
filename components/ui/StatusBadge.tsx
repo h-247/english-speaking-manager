@@ -20,6 +20,13 @@ export function StatusBadge({
       border: 'border-amber-500/30',
       dot: 'bg-amber-400',
     },
+    'To do': {
+      label: 'To do',
+      bg: 'bg-amber-500/10',
+      text: 'text-amber-300',
+      border: 'border-amber-500/30',
+      dot: 'bg-amber-400',
+    },
     Doing: {
       label: 'Doing',
       bg: 'bg-blue-500/10',

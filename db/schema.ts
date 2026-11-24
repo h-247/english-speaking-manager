@@ -7,7 +7,7 @@ import {
   index,
 } from 'drizzle-orm/sqlite-core';
 
-export const sessionStatusEnum = ['To Do', 'Doing', 'Done', 'PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const;
+export const sessionStatusEnum = ['To Do', 'To do', 'Doing', 'Done', 'PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const;
 export type SessionStatus = (typeof sessionStatusEnum)[number];
 
 export const practiceSessions = sqliteTable(
@@ -20,6 +20,7 @@ export const practiceSessions = sqliteTable(
     normalizedUrl: text('normalized_url').notNull(),
     branchUrls: text('branch_urls'), // JSON string array of branched ChatGPT links e.g. '["https://chatgpt.com/c/..."]' or '[{"url":"...","status":"To Do"}]'
     status: text('status', { enum: sessionStatusEnum }).notNull().default('To Do'),
+    chatgptUrlStatus: text('chatgpt_url_status', { enum: sessionStatusEnum }).notNull().default('To Do'),
     notes: text('notes'),
     tags: text('tags'), // JSON string array e.g. '["business","b2"]'
     passCount: integer('pass_count'),
@@ -77,9 +78,30 @@ export const customPrompts = sqliteTable(
   ],
 );
 
+export const topics = sqliteTable(
+  'topics',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull(),
+    name: text('name').notNull(),
+    color: text('color').notNull().default('blue'),
+    icon: text('icon').notNull().default('💬'),
+    description: text('description'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('user_topic_name_idx').on(table.userId, table.name),
+    index('topic_user_idx').on(table.userId),
+    index('topic_created_at_idx').on(table.userId, table.createdAt),
+  ],
+);
+
 export type PracticeSession = typeof practiceSessions.$inferSelect;
 export type NewPracticeSession = typeof practiceSessions.$inferInsert;
 export type PracticeAttempt = typeof practiceAttempts.$inferSelect;
 export type NewPracticeAttempt = typeof practiceAttempts.$inferInsert;
 export type CustomPrompt = typeof customPrompts.$inferSelect;
 export type NewCustomPrompt = typeof customPrompts.$inferInsert;
+export type Topic = typeof topics.$inferSelect;
+export type NewTopic = typeof topics.$inferInsert;

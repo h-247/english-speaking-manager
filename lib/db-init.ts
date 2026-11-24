@@ -1,5 +1,10 @@
-import { getDb } from '@/db';
+import { getDb, schema } from '@/db';
 import { sql } from 'drizzle-orm';
+import {
+  INITIAL_SEED_SESSIONS,
+  INITIAL_SEED_ATTEMPTS,
+  INITIAL_SEED_TOPICS,
+} from '@/lib/seed-data';
 
 let tablesChecked = false;
 let initPromise: Promise<void> | null = null;
@@ -53,10 +58,28 @@ export async function ensureDatabaseInitialized(): Promise<void> {
         // column already exists
       }
       try {
+        await db.run(sql`ALTER TABLE practice_sessions ADD COLUMN chatgpt_url_status TEXT DEFAULT 'To Do';`);
+      } catch {
+        // column already exists
+      }
+      try {
         await db.run(sql`ALTER TABLE practice_attempts ADD COLUMN chatgpt_url TEXT;`);
       } catch {
         // column already exists
       }
+
+      await db.run(sql`
+        CREATE TABLE IF NOT EXISTS topics (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          color TEXT NOT NULL DEFAULT 'blue',
+          icon TEXT NOT NULL DEFAULT '💬',
+          description TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
 
       await db.run(sql`
         CREATE TABLE IF NOT EXISTS custom_prompts (
@@ -69,12 +92,32 @@ export async function ensureDatabaseInitialized(): Promise<void> {
         );
       `);
 
+      try {
+        await db.run(sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS user_topic_name_idx 
+          ON topics (user_id, name);
+        `);
+      } catch {}
+      try {
+        await db.run(sql`
+          CREATE INDEX IF NOT EXISTS topic_user_idx 
+          ON topics (user_id);
+        `);
+      } catch {}
+
+      try {
+        await db.run(sql`DROP INDEX IF EXISTS user_normalized_url_idx;`);
+      } catch {}
+      try {
+        await db.run(sql`
+          CREATE UNIQUE INDEX IF NOT EXISTS user_normalized_url_idx 
+          ON practice_sessions (user_id, normalized_url)
+          WHERE normalized_url != '' AND normalized_url IS NOT NULL;
+        `);
+      } catch {}
+
       // Create composite and single column indexes safely
       await Promise.all([
-        db.run(sql`
-          CREATE UNIQUE INDEX IF NOT EXISTS user_normalized_url_idx 
-          ON practice_sessions (user_id, normalized_url);
-        `),
         db.run(sql`
           CREATE INDEX IF NOT EXISTS user_status_idx 
           ON practice_sessions (user_id, status);
@@ -108,6 +151,39 @@ export async function ensureDatabaseInitialized(): Promise<void> {
           ON practice_attempts (practiced_at);
         `),
       ]);
+
+      // Auto-seed preset topics if table is empty
+      try {
+        const topicRows = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(schema.topics);
+        const topicCount = Number(topicRows[0]?.count ?? 0);
+        if (topicCount === 0) {
+          for (const topic of INITIAL_SEED_TOPICS) {
+            await db.insert(schema.topics).values(topic);
+          }
+        }
+      } catch (err) {
+        console.error('Error auto-seeding topics:', err);
+      }
+
+      // Auto-seed baseline sessions and attempts if table is empty
+      try {
+        const sessionRows = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(schema.practiceSessions);
+        const sessionCount = Number(sessionRows[0]?.count ?? 0);
+        if (sessionCount === 0) {
+          for (const s of INITIAL_SEED_SESSIONS) {
+            await db.insert(schema.practiceSessions).values(s);
+          }
+          for (const a of INITIAL_SEED_ATTEMPTS) {
+            await db.insert(schema.practiceAttempts).values(a);
+          }
+        }
+      } catch (err) {
+        console.error('Error auto-seeding sessions:', err);
+      }
 
       tablesChecked = true;
     })();

@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { validateChatGPTUrl } from './chatgpt-url';
 
-export const sessionStatusEnum = ['To Do', 'Doing', 'Done', 'PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const;
+export const sessionStatusEnum = ['To Do', 'To do', 'Doing', 'Done', 'PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const;
 export type SessionStatus = (typeof sessionStatusEnum)[number];
-export const sessionStatusSchema = z.enum(sessionStatusEnum);
+export const sessionStatusSchema = z
+  .enum(sessionStatusEnum)
+  .transform((val) => (val === 'To do' ? 'To Do' : val));
 
 export const createSessionSchema = z.object({
   topic: z
@@ -12,14 +14,16 @@ export const createSessionSchema = z.object({
     .min(1, 'Topic cannot be empty.')
     .max(255, 'Topic must be 255 characters or fewer.'),
   chatgptUrl: z
-    .string({ message: 'ChatGPT conversation link is required.' })
+    .string()
     .trim()
-    .min(1, 'ChatGPT conversation link is required.')
-    .refine((url) => validateChatGPTUrl(url).isValid, {
+    .refine((url) => !url || validateChatGPTUrl(url).isValid, {
       message:
         'Please enter a valid, official HTTPS ChatGPT link (e.g. https://chatgpt.com/c/...)',
-    }),
-  status: sessionStatusSchema.optional().default('To Do'),
+    })
+    .default('')
+    .optional(),
+  status: sessionStatusSchema.optional(),
+  chatgptUrlStatus: sessionStatusSchema.optional(),
   notes: z.string().max(10000, 'Notes cannot exceed 10,000 characters.').optional().nullable(),
   tags: z
     .array(z.string().trim().min(1).max(50))
@@ -29,11 +33,11 @@ export const createSessionSchema = z.object({
   branchUrls: z
     .array(
       z.union([
-        z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+        z.string().trim().refine((url) => !url || validateChatGPTUrl(url).isValid, {
           message: 'Branch URL must be a valid HTTPS ChatGPT link.',
         }),
         z.object({
-          url: z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+          url: z.string().trim().refine((url) => !url || validateChatGPTUrl(url).isValid, {
             message: 'Branch URL must be a valid HTTPS ChatGPT link.',
           }),
           status: sessionStatusSchema.optional(),
@@ -77,12 +81,13 @@ export const updateSessionSchema = z.object({
   chatgptUrl: z
     .string()
     .trim()
-    .refine((url) => validateChatGPTUrl(url).isValid, {
+    .refine((url) => !url || validateChatGPTUrl(url).isValid, {
       message:
         'Please enter a valid, official HTTPS ChatGPT link (e.g. https://chatgpt.com/c/...)',
     })
     .optional(),
   status: sessionStatusSchema.optional(),
+  chatgptUrlStatus: sessionStatusSchema.optional(),
   notes: z.string().max(10000, 'Notes cannot exceed 10,000 characters.').optional().nullable(),
   tags: z
     .array(z.string().trim().min(1).max(50))
@@ -91,11 +96,11 @@ export const updateSessionSchema = z.object({
   branchUrls: z
     .array(
       z.union([
-        z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+        z.string().trim().refine((url) => !url || validateChatGPTUrl(url).isValid, {
           message: 'Branch URL must be a valid HTTPS ChatGPT link.',
         }),
         z.object({
-          url: z.string().trim().refine((url) => validateChatGPTUrl(url).isValid, {
+          url: z.string().trim().refine((url) => !url || validateChatGPTUrl(url).isValid, {
             message: 'Branch URL must be a valid HTTPS ChatGPT link.',
           }),
           status: sessionStatusSchema.optional(),
@@ -273,6 +278,31 @@ export const importPayloadSchema = z.object({
   duplicateStrategy: z.enum(['skip', 'update', 'replace']).optional().default('skip'),
 });
 
+export const createTopicSchema = z.object({
+  name: z
+    .string({ message: 'Topic name is required.' })
+    .trim()
+    .min(1, 'Topic name cannot be empty.')
+    .max(100, 'Topic name must be 100 characters or fewer.'),
+  color: z.string().optional().default('blue'),
+  icon: z.string().max(10).optional().default('💬'),
+  description: z.string().max(500).optional().nullable(),
+});
+
+export const updateTopicSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Topic name cannot be empty.')
+    .max(100, 'Topic name must be 100 characters or fewer.')
+    .optional(),
+  color: z.string().optional(),
+  icon: z.string().max(10).optional(),
+  description: z.string().max(500).optional().nullable(),
+});
+
+export type CreateTopicInput = z.infer<typeof createTopicSchema>;
+export type UpdateTopicInput = z.infer<typeof updateTopicSchema>;
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 export type UpdateSessionInput = z.infer<typeof updateSessionSchema>;
 export type RecordResultInput = z.infer<typeof recordResultSchema>;

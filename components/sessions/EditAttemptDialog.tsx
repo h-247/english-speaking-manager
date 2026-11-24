@@ -67,7 +67,7 @@ export function EditAttemptDialog({
     const newErrors: { score?: string; chatgptUrl?: string } = {};
 
     if (scoreStr === '' || isNaN(Number(scoreStr)) || Number(scoreStr) < 0 || Number(scoreStr) > 10) {
-      newErrors.score = 'Vui lòng nhập điểm hợp lệ từ 0 đến 10.';
+      newErrors.score = 'Please enter a valid score between 0 and 10.';
     }
     if (chatgptUrl.trim()) {
       const validation = validateChatGPTUrl(chatgptUrl.trim());
@@ -121,7 +121,7 @@ export function EditAttemptDialog({
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {/* Score Input */}
         <Input
-          label="Score / Điểm số (0 - 10)"
+          label="Score (0 - 10)"
           id="editScore"
           type="number"
           min="0"
@@ -136,7 +136,7 @@ export function EditAttemptDialog({
             setErrors((prev) => ({ ...prev, score: undefined }));
           }}
           error={errors.score}
-          helperText="Nhập điểm số từ 0.0 đến 10.0 cho lần luyện nói này"
+          helperText="Enter a score from 0.0 to 10.0 for this practice session"
         />
 
         {/* Live Score Preview Card */}
@@ -150,7 +150,7 @@ export function EditAttemptDialog({
                 Updated Score Preview
               </span>
               <span className="text-[11px] text-gray-400 font-mono">
-                Thang điểm 10
+                Scale of 10
               </span>
             </div>
           </div>

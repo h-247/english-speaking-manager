@@ -53,6 +53,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadData();
+    window.addEventListener('session_updated', loadData);
+    return () => {
+      window.removeEventListener('session_updated', loadData);
+    };
   }, [loadData]);
 
   const handleCopyPrompt = async () => {
@@ -229,6 +233,7 @@ export default function DashboardPage() {
                 onDelete={(s) => setDeletingSession(s)}
                 onRecordResult={(s) => setResultSession(s)}
                 onStatusChange={handleStatusChange}
+                onRefresh={loadData}
               />
             ))}
           </div>
@@ -259,6 +264,7 @@ export default function DashboardPage() {
                 onDelete={(s) => setDeletingSession(s)}
                 onRecordResult={(s) => setResultSession(s)}
                 onStatusChange={handleStatusChange}
+                onRefresh={loadData}
               />
             ))}
           </div>

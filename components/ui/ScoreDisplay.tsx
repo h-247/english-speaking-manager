@@ -4,10 +4,12 @@ export function ScoreDisplay({
   score,
   size = 'md',
   showLabel = false,
+  showMaxScore = true,
 }: {
   score: number | null | undefined;
   size?: 'sm' | 'md' | 'lg';
   showLabel?: boolean;
+  showMaxScore?: boolean;
 }) {
   if (score === null || score === undefined || Number.isNaN(score)) {
     return (
@@ -37,7 +39,7 @@ export function ScoreDisplay({
       <span className={`font-mono ${colorClass} ${sizeClasses[size]}`}>
         {scoreNum.toFixed(1)}
       </span>
-      <span className="text-[10px] text-gray-400 font-mono">/10</span>
+      {showMaxScore && <span className="text-[10px] text-gray-400 font-mono">/10</span>}
     </div>
   );
 }

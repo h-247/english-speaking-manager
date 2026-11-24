@@ -1,22 +1,33 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
-import { SessionItem } from '@/lib/api-client';
+import { SessionItem, updateSession } from '@/lib/api-client';
 import { formatDateShort } from '@/lib/format-date';
 import { getPresetTopicByName } from '@/lib/preset-topics';
-import { ExternalLink, Copy, Edit2, Trash2, Award, Link as LinkIcon, FileText } from 'lucide-react';
+import {
+  Edit2,
+  Trash2,
+  Link2,
+  MessageSquareCheck,
+  MessageSquarePlus,
+  Pencil,
+  Trophy,
+  Plus,
+} from 'lucide-react';
 import { ORIGINAL_COACH_PROMPT } from '@/lib/coach-prompt';
 import { useToast } from '@/components/ui/Toast';
+import { EditSessionChatModal } from '@/components/sessions/EditSessionChatModal';
+import { AddScoreModal } from '@/components/sessions/AddScoreModal';
 
 export interface SessionTableProps {
   sessions: SessionItem[];
   onEdit: (session: SessionItem) => void;
   onDelete: (session: SessionItem) => void;
-  onRecordResult: (session: SessionItem) => void;
+  onRecordResult?: (session: SessionItem) => void;
   onStatusChange: (session: SessionItem, newStatus: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string) => void;
+  onRefresh?: () => void;
 }
 
 export function SessionTable({
@@ -25,25 +36,48 @@ export function SessionTable({
   onDelete,
   onRecordResult,
   onStatusChange,
+  onRefresh,
 }: SessionTableProps) {
-  const { showSuccess, showError } = useToast();
+  const { showSuccess } = useToast();
+  const [promptChatUrl, setPromptChatUrl] = useState<string>('https://chatgpt.com');
+  const [chatModalSession, setChatModalSession] = useState<SessionItem | null>(null);
+  const [scoreModalSession, setScoreModalSession] = useState<SessionItem | null>(null);
 
-  const handleCopyLink = async (url: string) => {
+  React.useEffect(() => {
+    const updateUrl = () => {
+      try {
+        const cached = localStorage.getItem('prompt_chat_url') || localStorage.getItem('shared_prompt_url');
+        if (cached) setPromptChatUrl(cached);
+      } catch {}
+    };
+    updateUrl();
+    window.addEventListener('storage', updateUrl);
+    window.addEventListener('prompt_chat_url_changed', updateUrl);
+    return () => {
+      window.removeEventListener('storage', updateUrl);
+      window.removeEventListener('prompt_chat_url_changed', updateUrl);
+    };
+  }, []);
+
+  const handlePromptClick = async () => {
     try {
-      await navigator.clipboard.writeText(url);
-      showSuccess('ChatGPT conversation link copied.');
+      let promptText = ORIGINAL_COACH_PROMPT;
+      if (typeof window !== 'undefined') {
+        const customPrompt = localStorage.getItem('shared_prompt_text');
+        if (customPrompt) promptText = customPrompt;
+      }
+      await navigator.clipboard.writeText(promptText);
+      showSuccess('Opening Prompt Chat & prompt copied to clipboard.');
     } catch {
-      showError('Failed to copy link.');
+      // navigation continues
     }
   };
 
-  const handleCopyPrompt = async (topic: string) => {
-    try {
-      const text = `Topic: ${topic}\n\n${ORIGINAL_COACH_PROMPT}`;
-      await navigator.clipboard.writeText(text);
-      showSuccess(`Copied coach prompt for "${topic}".`);
-    } catch {
-      showError('Failed to copy prompt.');
+  const handleDataRefresh = () => {
+    if (onRefresh) {
+      onRefresh();
+    } else if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('session_updated'));
     }
   };
 
@@ -63,9 +97,9 @@ export function SessionTable({
         </thead>
         <tbody className="divide-y divide-[#333333] text-sm">
           {sessions.map((session) => {
-            const isUnfinished = session.status === 'PLANNED' || session.status === 'IN_PROGRESS';
             const preset = getPresetTopicByName(session.topic);
             const icon = preset ? preset.icon : '💬';
+            const chatUrl = session.chatgptUrl;
 
             return (
               <tr
@@ -137,14 +171,28 @@ export function SessionTable({
                   </div>
                 </td>
 
-                {/* Score Column */}
+                {/* Score Column with Feature Add Score */}
                 <td className="py-3.5 px-4 whitespace-nowrap font-mono text-xs">
-                  {session.score !== null ? (
-                    <span className="text-gray-200 font-bold">
+                  {session.score !== null && session.score !== undefined ? (
+                    <button
+                      type="button"
+                      onClick={() => setScoreModalSession(session)}
+                      className="inline-flex items-center gap-1 text-gray-200 font-bold hover:text-white transition-colors cursor-pointer"
+                      title="Edit score"
+                    >
                       <b className="text-emerald-400">{session.score.toFixed(1)}</b> / 10
-                    </span>
+                      <Pencil className="w-2.5 h-2.5 text-gray-500 opacity-70" />
+                    </button>
                   ) : (
-                    <span className="text-gray-500 italic">—</span>
+                    <button
+                      type="button"
+                      onClick={() => setScoreModalSession(session)}
+                      className="inline-flex items-center gap-1 text-amber-400 hover:text-amber-300 text-xs font-semibold transition-colors cursor-pointer"
+                      title="Add score"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add score</span>
+                    </button>
                   )}
                 </td>
 
@@ -186,51 +234,19 @@ export function SessionTable({
                 {/* Actions */}
                 <td className="py-3.5 px-4 whitespace-nowrap text-right">
                   <div className="flex items-center justify-end gap-1.5">
-                    {/* Open / Continue in ChatGPT */}
-                    <a
-                      href={session.chatgptUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold transition-colors ${
-                        isUnfinished
-                          ? 'bg-white text-black hover:bg-gray-200'
-                          : 'bg-[#333333] text-gray-200 hover:bg-[#404040]'
-                      }`}
-                      title="Open conversation in ChatGPT"
-                    >
-                      <span>{isUnfinished ? 'Continue' : 'Open'}</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-
-                    {/* Prompt button */}
+                    {/* Add / Update score */}
                     <button
-                      onClick={() => handleCopyPrompt(session.topic)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold bg-[#2a2a2a] text-amber-300 hover:bg-[#383838] border border-[#3e3e3e] transition-colors"
-                      title="Copy coach prompt"
-                    >
-                      <Copy className="w-3 h-3" />
-                      <span>Prompt</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleCopyLink(session.chatgptUrl)}
-                      className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#333333] transition-colors"
-                      title="Copy ChatGPT link"
-                      aria-label="Copy ChatGPT link"
-                    >
-                      <LinkIcon className="w-3.5 h-3.5" />
-                    </button>
-
-                    <button
-                      onClick={() => onRecordResult(session)}
+                      type="button"
+                      onClick={() => setScoreModalSession(session)}
                       className="p-1.5 rounded text-amber-400 hover:bg-[#333333] transition-colors"
-                      title="Record score"
-                      aria-label="Record results"
+                      title="Add or update score"
+                      aria-label="Add or update score"
                     >
-                      <Award className="w-3.5 h-3.5" />
+                      <Trophy className="w-3.5 h-3.5" />
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => onEdit(session)}
                       className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-[#333333] transition-colors"
                       title="Edit session"
@@ -240,6 +256,7 @@ export function SessionTable({
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => onDelete(session)}
                       className="p-1.5 rounded text-rose-400 hover:bg-rose-950/40 transition-colors"
                       title="Delete session"
@@ -247,6 +264,72 @@ export function SessionTable({
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
+
+                    {/* Outermost Right: ChatGPT link pill and Prompt link (matching https://github.com/h-247/english-grammar-quiz) */}
+                    <div
+                      className={`flex items-center rounded-lg p-0.5 shadow-sm border ${
+                        chatUrl && chatUrl.trim().length > 0 && chatUrl !== 'https://chatgpt.com'
+                          ? 'bg-[#132c1e] border-[#1e5233] text-emerald-400'
+                          : 'bg-[#2c1d0c] border-[#4d3214] text-amber-400'
+                      }`}
+                    >
+                      {chatUrl && chatUrl.trim().length > 0 ? (
+                        <a
+                          href={chatUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const currentStatus = session.chatgptUrlStatus || 'To Do';
+                              if (currentStatus !== 'Doing' && currentStatus !== 'IN_PROGRESS') {
+                                await updateSession(session.id, { chatgptUrlStatus: 'Doing' });
+                                showSuccess('Updated practice status to "Doing".');
+                                onRefresh?.();
+                              }
+                            } catch {}
+                          }}
+                          title={`Open ChatGPT: ${chatUrl}`}
+                          className="p-1 rounded transition-colors flex items-center justify-center hover:text-emerald-300 hover:bg-[#1a3827]"
+                        >
+                          <MessageSquareCheck className="w-3.5 h-3.5" />
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setChatModalSession(session)}
+                          title="Add ChatGPT Link"
+                          className="p-1 rounded transition-colors flex items-center justify-center hover:text-amber-300 hover:bg-[#382610] cursor-pointer"
+                        >
+                          <MessageSquarePlus className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setChatModalSession(session)}
+                        title={chatUrl ? 'Edit ChatGPT Link' : 'Add ChatGPT Link'}
+                        className={`p-1 rounded transition-colors cursor-pointer border-l ${
+                          chatUrl && chatUrl.trim().length > 0 && chatUrl !== 'https://chatgpt.com'
+                            ? 'border-[#1e5233] hover:text-emerald-300 hover:bg-[#1a3827]'
+                            : 'border-[#4d3214] hover:text-amber-300 hover:bg-[#382610]'
+                        }`}
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Link Prompt Chat */}
+                    <a
+                      href={promptChatUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={handlePromptClick}
+                      className="p-1 rounded bg-[#132c1e] hover:bg-[#1a3827] text-emerald-400 border border-[#1e5233] transition-colors flex items-center justify-center cursor-pointer shadow-sm shrink-0"
+                      title="Open Prompt Chat"
+                      aria-label="Open Prompt Chat"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                    </a>
                   </div>
                 </td>
               </tr>
@@ -254,6 +337,22 @@ export function SessionTable({
           })}
         </tbody>
       </table>
+
+      {/* Edit ChatGPT Link Modal */}
+      <EditSessionChatModal
+        isOpen={Boolean(chatModalSession)}
+        onClose={() => setChatModalSession(null)}
+        session={chatModalSession}
+        onSave={() => handleDataRefresh()}
+      />
+
+      {/* Add / Update Score Modal */}
+      <AddScoreModal
+        isOpen={Boolean(scoreModalSession)}
+        onClose={() => setScoreModalSession(null)}
+        session={scoreModalSession}
+        onSuccess={() => handleDataRefresh()}
+      />
     </div>
   );
 }

@@ -5,7 +5,20 @@ import {
   CreateAttemptInput,
   UpdateAttemptInput,
   ImportPayload,
+  CreateTopicInput,
+  UpdateTopicInput,
 } from '@/lib/validation';
+
+export interface TopicItem {
+  id: string;
+  userId: string;
+  name: string;
+  color: string;
+  icon: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface TopicGroupedLink {
   url: string;
@@ -31,16 +44,19 @@ export interface PracticeAttemptItem {
   createdAt: string;
 }
 
+export type BranchUrlItem = string | { url: string; status?: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string };
+
 export interface SessionItem {
   id: string;
   userId: string;
   topic: string;
   chatgptUrl: string;
   normalizedUrl: string;
-  branchUrls?: string[];
+  branchUrls?: BranchUrlItem[];
   allChatgptUrls?: string[];
   groupedLinks?: TopicGroupedLink[];
   status: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string;
+  chatgptUrlStatus?: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string;
   notes: string | null;
   tags: string[];
   passCount: number | null;
@@ -240,33 +256,32 @@ export async function addTopicLink(
   sessionId: string,
   chatgptUrl: string,
 ): Promise<SessionItem> {
-  const current = await fetchSession(sessionId);
-  const existing = current.branchUrls || [];
-  if (!existing.includes(chatgptUrl) && chatgptUrl !== current.chatgptUrl) {
-    return updateSession(sessionId, {
-      branchUrls: [...existing, chatgptUrl],
-    });
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/links`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: chatgptUrl }),
+  });
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to add link to topic');
   }
-  return current;
+  return res.json();
 }
 
 export async function removeTopicLink(
   sessionId: string,
   chatgptUrl: string,
 ): Promise<SessionItem> {
-  const current = await fetchSession(sessionId);
-  const existing = current.branchUrls || [];
-  if (current.chatgptUrl === chatgptUrl) {
-    if (existing.length > 0) {
-      return updateSession(sessionId, {
-        chatgptUrl: existing[0],
-        branchUrls: existing.slice(1),
-      });
-    }
-  }
-  return updateSession(sessionId, {
-    branchUrls: existing.filter((u) => u !== chatgptUrl),
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/links`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: chatgptUrl }),
   });
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to remove link from topic');
+  }
+  return res.json();
 }
 
 export async function importSessions(payload: ImportPayload) {
@@ -280,4 +295,49 @@ export async function importSessions(payload: ImportPayload) {
     throw new Error(err.error || 'Failed to import sessions');
   }
   return res.json();
+}
+
+export async function fetchTopics(): Promise<{ topics: TopicItem[] }> {
+  const res = await fetch('/api/topics');
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch topics');
+  }
+  return res.json();
+}
+
+export async function createTopic(data: CreateTopicInput): Promise<TopicItem> {
+  const res = await fetch('/api/topics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to create topic');
+  }
+  return res.json();
+}
+
+export async function updateTopic(id: string, data: UpdateTopicInput): Promise<TopicItem> {
+  const res = await fetch(`/api/topics/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update topic');
+  }
+  return res.json();
+}
+
+export async function deleteTopic(id: string): Promise<void> {
+  const res = await fetch(`/api/topics/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err: any = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete topic');
+  }
 }

@@ -70,13 +70,19 @@ test.describe('Data Management and Security E2E Tests', () => {
     await page.goto('/sessions');
     await page.waitForLoadState('networkidle');
 
-    // Open Add Session modal
-    const addBtn = page.getByRole('button', { name: /Add Session/i }).first();
-    await addBtn.click();
-    await expect(page.getByRole('heading', { name: /Add Speaking Session/i })).toBeVisible();
+    // Open sidebar if collapsed using Alt+1
+    const closeSidebarBtn = page.locator('button[aria-label="Close sidebar"]').first();
+    if (await closeSidebarBtn.isHidden()) {
+      await page.keyboard.press('Alt+1');
+      await expect(closeSidebarBtn).toBeVisible({ timeout: 5000 });
+    }
+
+    await page.locator('button[aria-label="Open topic options"]').first().click();
+    await page.getByRole('button', { name: /New Topic/i }).click();
+    await expect(page.getByRole('heading', { name: /Create New Topic/i })).toBeVisible();
 
     // Press Escape to dismiss
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('heading', { name: /Add Speaking Session/i })).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: /Create New Topic/i })).not.toBeVisible();
   });
 });

@@ -2,366 +2,580 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useRouter } from 'next/navigation';
 import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
-import { SessionItem } from '@/lib/api-client';
-import { formatDateShort } from '@/lib/format-date';
-import { getPresetTopicByName } from '@/lib/preset-topics';
+import { SessionItem, updateSession } from '@/lib/api-client';
 import { ORIGINAL_COACH_PROMPT } from '@/lib/coach-prompt';
 import {
-  ExternalLink,
+  Link2,
+  MessageSquareCheck,
+  MessageSquarePlus,
+  Pencil,
+  Plus,
   Copy,
-  Edit2,
-  Trash2,
-  Calendar,
-  Tag,
-  ArrowRight,
-  Link as LinkIcon,
-  Play,
-  Sparkles,
-  MessageSquare,
-  RotateCw,
-  Award,
+  Check,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
+import { EditSessionChatModal } from '@/components/sessions/EditSessionChatModal';
+import { AddScoreModal } from '@/components/sessions/AddScoreModal';
 
 export interface SessionCardProps {
   session: SessionItem;
   onEdit: (session: SessionItem) => void;
   onDelete: (session: SessionItem) => void;
-  onRecordResult: (session: SessionItem) => void;
-  onStatusChange: (session: SessionItem, newStatus: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string) => void;
+  onRecordResult?: (session: SessionItem) => void;
+  onStatusChange: (
+    session: SessionItem,
+    newStatus: 'To Do' | 'Doing' | 'Done' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | string,
+  ) => void;
+  onRefresh?: () => void;
 }
 
-function getTopicTheming(topicName: string) {
-  const hash = topicName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const themes = [
+interface StatusButtonGroupProps {
+  currentStatus: 'To do' | 'Doing' | 'Done' | string;
+  onChange: (status: 'To do' | 'Doing' | 'Done') => void;
+  size?: 'sm' | 'md';
+  ariaLabel?: string;
+}
+
+function StatusButtonGroup({
+  currentStatus,
+  onChange,
+  size = 'md',
+  ariaLabel = 'Status',
+}: StatusButtonGroupProps) {
+  const normalized =
+    currentStatus === 'COMPLETED' || currentStatus === 'Done'
+      ? 'Done'
+      : currentStatus === 'IN_PROGRESS' || currentStatus === 'Doing'
+        ? 'Doing'
+        : 'To do';
+
+  const statuses: Array<{
+    id: 'To do' | 'Doing' | 'Done';
+    label: string;
+    activeClass: string;
+    inactiveTextClass: string;
+  }> = [
     {
-      gradient: 'from-amber-600 via-orange-600 to-red-700',
-      badgeBg: 'bg-orange-500/20 text-orange-200 border-orange-400/30',
-      barColor: 'bg-orange-400',
+      id: 'To do',
+      label: 'To do',
+      activeClass: 'bg-[#142338] text-sky-300 border border-sky-500/60 shadow-sm font-semibold',
+      inactiveTextClass: 'text-gray-400',
     },
     {
-      gradient: 'from-cyan-700 via-blue-700 to-indigo-800',
-      badgeBg: 'bg-sky-500/20 text-sky-200 border-sky-400/30',
-      barColor: 'bg-blue-400',
+      id: 'Doing',
+      label: 'Doing',
+      activeClass: 'bg-[#2b1d0c] text-amber-400 border border-amber-500/60 shadow-sm font-semibold',
+      inactiveTextClass: 'text-gray-400',
     },
     {
-      gradient: 'from-purple-700 via-fuchsia-700 to-pink-800',
-      badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/30',
-      barColor: 'bg-purple-400',
-    },
-    {
-      gradient: 'from-emerald-700 via-teal-700 to-slate-800',
-      badgeBg: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30',
-      barColor: 'bg-emerald-400',
-    },
-    {
-      gradient: 'from-rose-700 via-pink-700 to-purple-800',
-      badgeBg: 'bg-rose-500/20 text-rose-200 border-rose-400/30',
-      barColor: 'bg-rose-400',
-    },
-    {
-      gradient: 'from-slate-700 via-zinc-800 to-neutral-900',
-      badgeBg: 'bg-gray-500/20 text-gray-200 border-gray-400/30',
-      barColor: 'bg-amber-400',
+      id: 'Done',
+      label: 'Done',
+      activeClass: 'bg-[#102a1c] text-emerald-400 border border-emerald-500/60 shadow-sm font-semibold',
+      inactiveTextClass: 'text-gray-400',
     },
   ];
-  return themes[hash % themes.length];
+
+  const padClass = size === 'sm' ? 'px-2 py-0.5 text-[11px]' : 'px-3 py-1 text-xs';
+
+  return (
+    <div
+      className="inline-flex items-center rounded-xl bg-[#20232b] border border-[#383d4a] p-0.5 relative shrink-0 shadow-sm"
+      role="group"
+      aria-label={ariaLabel}
+    >
+      {/* Hidden select for backwards compatibility and screen readers */}
+      <select
+        aria-label={ariaLabel}
+        value={normalized}
+        onChange={(e) => onChange(e.target.value as any)}
+        className="sr-only"
+        tabIndex={-1}
+      >
+        <option value="To do">To do</option>
+        <option value="Doing">Doing</option>
+        <option value="Done">Done</option>
+      </select>
+
+      {statuses.map((s, index) => {
+        const isActive = normalized === s.id;
+        const prevActive = index > 0 && normalized === statuses[index - 1].id;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onChange(s.id)}
+            aria-pressed={isActive}
+            className={`inline-flex items-center justify-center rounded-lg transition-all cursor-pointer select-none active:scale-95 ${padClass} ${
+              index > 0 && !isActive && !prevActive ? 'border-l border-[#333846]' : ''
+            } ${
+              isActive
+                ? s.activeClass
+                : `${s.inactiveTextClass} hover:text-white hover:bg-[#282d38]`
+            }`}
+          >
+            <span>{s.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function SessionCard({
   session,
   onEdit,
   onDelete,
-  onRecordResult,
   onStatusChange,
+  onRefresh,
 }: SessionCardProps) {
+  const router = useRouter();
   const { showSuccess, showError } = useToast();
-  const preset = getPresetTopicByName(session.topic);
-  const theme = getTopicTheming(session.topic);
 
-  const normalizedStatus =
-    session.status === 'COMPLETED' ? 'Done' :
-    session.status === 'IN_PROGRESS' ? 'Doing' :
-    session.status === 'PLANNED' ? 'To Do' :
-    session.status || 'To Do';
+  const [isEditChatOpen, setIsEditChatOpen] = React.useState(false);
+  const [isAddScoreOpen, setIsAddScoreOpen] = React.useState(false);
+  const [copiedTopic, setCopiedTopic] = React.useState(false);
+  const [isAddingNewLink, setIsAddingNewLink] = React.useState(false);
 
-  const progressPercent = session.score !== null ? Math.min(100, Math.round(session.score * 10)) : 0;
+  const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      target.closest('button, a, select, input, textarea, [role="button"], [role="option"]')
+    ) {
+      return;
+    }
+    router.push(`/sessions/${session.id}`);
+  };
 
-  const handleCopyLink = async (e: React.MouseEvent) => {
+  const handleCopyTopic = async (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
+    let copied = false;
+
     try {
-      await navigator.clipboard.writeText(session.chatgptUrl);
-      showSuccess('ChatGPT conversation link copied.');
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(session.topic);
+        copied = true;
+      }
     } catch {
-      showError('Failed to copy link.');
+      // clipboard API failed (e.g. document not focused), fall through to execCommand
+    }
+
+    if (!copied) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = session.topic;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } catch {}
+    }
+
+    setCopiedTopic(true);
+    showSuccess(`Copied "${session.topic}" to clipboard!`);
+    setTimeout(() => setCopiedTopic(false), 2000);
+  };
+
+  // Grouped links for this topic
+  const baseLinks = React.useMemo(() => {
+    if (session.groupedLinks && session.groupedLinks.length > 0) {
+      return session.groupedLinks;
+    }
+    const branchLinks = (session.branchUrls || []).map((b: any) => ({
+      url: typeof b === 'string' ? b : b?.url || '',
+      status: typeof b === 'object' && b?.status ? b.status : 'To Do',
+      attemptNumbers: [],
+      attemptCount: 0,
+      bestScore: null,
+      latestPracticedAt: null,
+    }));
+    return [
+      {
+        url: session.chatgptUrl,
+        status: (session as any).chatgptUrlStatus || 'To do',
+        attemptNumbers: session.attempts
+          ? session.attempts.map((_, i) => session.attempts!.length - i)
+          : [1],
+        attemptCount: session.attemptCount || (session.score !== null ? 1 : 0),
+        bestScore: session.score,
+        latestPracticedAt: session.practicedAt,
+      },
+      ...branchLinks,
+    ];
+  }, [session]);
+
+  const isLinkDone = (status?: string) =>
+    status === 'Done' || status === 'COMPLETED';
+  const isLinkDoing = (status?: string) =>
+    status === 'Doing' || status === 'IN_PROGRESS';
+
+  // Check if all existing practices are done
+  const areAllLinksDone = React.useMemo(() => {
+    return baseLinks.length > 0 && baseLinks.every((l) => isLinkDone(l.status));
+  }, [baseLinks]);
+
+  // Real links only (do not automatically create a new link until user clicks 'Add ChatGPT link')
+  const links = baseLinks;
+
+  // Topic score is the highest score among all ChatGPT links of this topic
+  const topicScore = React.useMemo(() => {
+    const linkScores =
+      links
+        .map((l) => l.bestScore)
+        .filter((s): s is number => s !== null && s !== undefined) || [];
+    const attemptScores = session.attempts?.map((a) => a.score) || [];
+    const allScores = [...linkScores, ...attemptScores];
+    if (session.score !== null && session.score !== undefined) allScores.push(session.score);
+    return allScores.length > 0 ? Math.max(...allScores) : null;
+  }, [links, session]);
+
+  // Determine active practice link:
+  // 1. First practice with status 'Doing' / 'IN_PROGRESS'
+  // 2. Or first practice that is not Done ('To do')
+  // 3. Or latest practice (when all are done, stay on the completed practice without automatically editing status)
+  const nextPracticeIndex = React.useMemo(() => {
+    const doingIdx = links.findIndex((l) => isLinkDoing(l.status));
+    if (doingIdx !== -1) return doingIdx;
+
+    const todoIdx = links.findIndex((l) => !isLinkDone(l.status));
+    if (todoIdx !== -1) return todoIdx;
+
+    return Math.max(0, links.length - 1);
+  }, [links]);
+
+  const nextPracticeLink = links[nextPracticeIndex] || links[0];
+
+  const nextLinkStatus =
+    nextPracticeLink?.status === 'COMPLETED' || nextPracticeLink?.status === 'Done'
+      ? 'Done'
+      : nextPracticeLink?.status === 'IN_PROGRESS' || nextPracticeLink?.status === 'Doing'
+        ? 'Doing'
+        : 'To do';
+
+  const normalizedTopicStatus =
+    session.status === 'COMPLETED' || session.status === 'Done'
+      ? 'Done'
+      : session.status === 'IN_PROGRESS' || session.status === 'Doing'
+        ? 'Doing'
+        : 'To do';
+
+  const [promptChatUrl, setPromptChatUrl] = React.useState<string>('');
+
+  React.useEffect(() => {
+    const updateUrl = () => {
+      try {
+        const stored = localStorage.getItem('prompt_chat_url');
+        if (stored !== null) {
+          setPromptChatUrl(stored);
+        } else {
+          const shared = localStorage.getItem('shared_prompt_url');
+          setPromptChatUrl(shared || '');
+        }
+      } catch {}
+    };
+    updateUrl();
+    window.addEventListener('storage', updateUrl);
+    window.addEventListener('prompt_chat_url_changed', updateUrl);
+    return () => {
+      window.removeEventListener('storage', updateUrl);
+      window.removeEventListener('prompt_chat_url_changed', updateUrl);
+    };
+  }, []);
+
+  const handlePromptClick = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      let promptText = ORIGINAL_COACH_PROMPT;
+      if (typeof window !== 'undefined') {
+        const customPrompt = localStorage.getItem('shared_prompt_text');
+        if (customPrompt) promptText = customPrompt;
+      }
+      await navigator.clipboard.writeText(promptText);
+      showSuccess('Opening Prompt Chat & prompt copied to clipboard.');
+      if (nextLinkStatus !== 'Doing') {
+        handleLinkStatusChange(nextPracticeIndex, 'Doing');
+      }
+    } catch {
+      // navigation continues
     }
   };
 
-  const handleCopyPrompt = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDataRefresh = () => {
+    if (onRefresh) {
+      onRefresh();
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('session_updated'));
+    }
+  };
+
+  const handleLinkStatusChange = async (target: number | string, newStatus: string) => {
+    if (!session) return;
+    const normalizedStatus = newStatus === 'To do' ? 'To Do' : newStatus;
+
+    let targetIndex = typeof target === 'number' ? target : links.findIndex((l) => l.url === target);
+    if (targetIndex < 0) targetIndex = 0;
+
     try {
-      const promptText = `Topic: ${session.topic}\n\n${ORIGINAL_COACH_PROMPT}`;
-      await navigator.clipboard.writeText(promptText);
-      showSuccess(`Coach prompt copied for "${session.topic}".`);
-    } catch {
-      showError('Failed to copy coach prompt.');
+      if (targetIndex === 0) {
+        const updates: any = {
+          chatgptUrlStatus: normalizedStatus,
+        };
+        await updateSession(session.id, updates);
+      } else {
+        const branchIndex = targetIndex - 1;
+        const currentBranches = [...(session.branchUrls || [])];
+        while (currentBranches.length <= branchIndex) {
+          currentBranches.push({ url: '', status: 'To Do' });
+        }
+        const existingB = currentBranches[branchIndex];
+        const u = typeof existingB === 'string' ? existingB : (existingB?.url || '');
+        currentBranches[branchIndex] = { url: u, status: normalizedStatus };
+
+        await updateSession(session.id, { branchUrls: currentBranches as any });
+      }
+      showSuccess(`Updated practice status to "${newStatus}".`);
+      handleDataRefresh();
+    } catch (err: any) {
+      showError(err.message || 'Failed to update link status.');
+    }
+  };
+
+  const handleOpenChatGPT = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (nextLinkStatus !== 'Doing') {
+      handleLinkStatusChange(nextPracticeIndex, 'Doing');
     }
   };
 
   return (
-    <div className="bg-[#1a1c20] border border-[#2b303c] hover:border-[#404756] rounded-2xl overflow-hidden flex flex-col justify-between shadow-lg transition-all group">
-      {/* Top Illustration / Thematic Banner */}
-      <div className={`relative h-36 w-full bg-gradient-to-br ${theme.gradient} p-4 flex flex-col justify-between overflow-hidden select-none`}>
-        {/* Subtle decorative circles & overlay */}
-        <div className="absolute -right-6 -bottom-8 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none" />
-        <div className="absolute left-1/3 top-0 w-24 h-24 rounded-full bg-black/20 blur-lg pointer-events-none" />
-
-        {/* Top bar inside banner */}
-        <div className="flex items-center justify-between z-10">
-          <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-md text-white border border-white/20">
-            CEFR B2 TED Talk
-          </span>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-black/40 backdrop-blur-md text-amber-300 border border-amber-400/30">
-              {preset?.category || 'Speaking'}
-            </span>
-          </div>
-        </div>
-
-        {/* Center artwork / icon showcase */}
-        <div className="flex items-center justify-center gap-3 z-10 py-1">
-          <div className="w-14 h-14 rounded-2xl bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center text-3xl shadow-inner">
-            {preset?.icon || '💬'}
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs font-semibold text-white/90 drop-shadow-sm">
-              Echo Coach System
-            </span>
-            <span className="text-[11px] text-white/70">
-              5-Min Talk • Fluency Loop
-            </span>
-          </div>
-        </div>
-      </div>
-
+    <div
+      onClick={handleCardClick}
+      className="bg-[#1a1c20] border border-[#2b303c] hover:border-[#404756] rounded-2xl overflow-hidden flex flex-col justify-between shadow-lg transition-all group cursor-pointer"
+    >
       {/* Card Content Body */}
       <div className="p-4 sm:p-5 flex-1 flex flex-col gap-4">
-        {/* Title Header with external link icon */}
+        {/* Title Header with copy topic button & score point */}
         <div>
           <div className="flex items-start justify-between gap-2">
-            <Link
-              href={`/sessions/${session.id}`}
-              className="text-base font-bold text-[#f0f2f5] hover:text-white hover:underline transition-colors line-clamp-2 leading-tight"
-              title={session.topic}
-            >
-              {session.topic}
-            </Link>
-            <Link
-              href={`/sessions/${session.id}`}
-              className="text-gray-400 hover:text-white p-1 shrink-0"
-              title="View topic details"
-            >
-              <ExternalLink className="w-4 h-4" />
-            </Link>
-          </div>
-          <span className="text-xs text-gray-400 block mt-1 font-medium">
-            Coach: Echo Speaking Coach
-          </span>
-        </div>
-
-        {/* Learning / Speaking Progress */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-gray-400 font-medium">Learning Progress</span>
-            <span className="font-mono font-bold text-gray-200">
-              {session.score !== null ? `${progressPercent}%` : '0%'}
-            </span>
-          </div>
-          <div className="h-1.5 w-full bg-[#272b35] rounded-full overflow-hidden">
-            <div
-              className={`h-full ${theme.barColor} rounded-full transition-all duration-300`}
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Metrics Chips Row */}
-        <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-          <span className="px-2.5 py-1 rounded-md bg-[#232732] border border-[#333a4a] text-gray-300 font-medium">
-            {session.attemptCount !== undefined && session.attemptCount > 0
-              ? `${session.attemptCount} ${session.attemptCount === 1 ? 'Attempt' : 'Attempts'}`
-              : '1 Attempt'}
-          </span>
-          <span className="px-2.5 py-1 rounded-md bg-[#232732] border border-[#333a4a] text-gray-300 font-medium">
-            {session.score !== null ? `Score: ${session.score.toFixed(1)}/10` : 'No score'}
-          </span>
-          <span className="px-2.5 py-1 rounded-md bg-[#232732] border border-[#333a4a] text-gray-300 font-medium truncate max-w-[130px]">
-            {session.allChatgptUrls && session.allChatgptUrls.length > 1
-              ? `${session.allChatgptUrls.length} ChatGPT Links`
-              : '1 ChatGPT Link'}
-          </span>
-        </div>
-
-        {/* Next Practice / Active Conversation Box (matching screenshot) */}
-        <div className="p-3 rounded-xl bg-[#20232b] border border-[#2e3442] space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-300">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Next Practice</span>
-            </div>
-            <StatusBadge status={normalizedStatus} size="sm" />
-          </div>
-
-          <div>
-            <span className="text-xs font-bold text-gray-200 block truncate">
-              1. ChatGPT Practice Conversation
-            </span>
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-0.5">
-              <Calendar className="w-3 h-3 text-gray-500" />
-              <span>
-                {session.practicedAt
-                  ? formatDateShort(session.practicedAt)
-                  : 'Ready to practice'}
-              </span>
-            </div>
-          </div>
-
-          {/* Action Buttons Row (Status dropdown, ChatGPT link, Prompt button, Practice play button, Teal copy pill) */}
-          <div className="flex items-center gap-2 flex-wrap pt-1">
-            {/* Status Dropdown */}
-            <select
-              value={normalizedStatus}
-              onChange={(e) => onStatusChange(session, e.target.value)}
-              className="bg-[#191b22] hover:bg-[#232732] border border-[#394050] text-xs font-semibold rounded-lg px-2.5 py-1.5 text-gray-200 cursor-pointer outline-none transition-colors"
-              title="Change status"
-              aria-label="Change status"
-            >
-              <option value="To Do" className="bg-[#1e2025] text-amber-300">To Do</option>
-              <option value="Doing" className="bg-[#1e2025] text-blue-300">Doing</option>
-              <option value="Done" className="bg-[#1e2025] text-emerald-300">Done</option>
-            </select>
-
-            {/* ChatGPT ↗ Button */}
-            <a
-              href={session.chatgptUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#272c37] hover:bg-[#343b4a] border border-[#3b4354] text-xs font-semibold text-gray-200 hover:text-white transition-colors"
-              title="Open conversation in ChatGPT"
-            >
-              <span>ChatGPT</span>
-              <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
-            </a>
-
-            {/* Prompt 📋 Button */}
-            <button
-              type="button"
-              onClick={handleCopyPrompt}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#272c37] hover:bg-[#343b4a] border border-[#3b4354] text-xs font-semibold text-gray-200 hover:text-white transition-colors"
-              title="Copy coach prompt for this topic"
-            >
-              <span>Prompt</span>
-              <Copy className="w-3.5 h-3.5 text-amber-400" />
-            </button>
-
-            {/* ▷ Practice Play Button (Bold White Pill Button) */}
-            <button
-              type="button"
-              onClick={() => onRecordResult(session)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-white hover:bg-gray-200 text-black text-xs font-bold shadow-md transition-all active:scale-95"
-              title="Record score / practice result"
-            >
-              <Play className="w-3.5 h-3.5 fill-black text-black" />
-              <span>Practice</span>
-            </button>
-
-            {/* Teal Copy Link Pill Button (matching screenshot) */}
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-[#0d2e2b] border border-[#147a6c] text-[#1fd5be] hover:bg-[#12423e] hover:text-[#38efd7] shadow-sm transition-colors shrink-0"
-              title="Copy ChatGPT Link"
-              aria-label="Copy ChatGPT Link"
-            >
-              <LinkIcon className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Edit Note & Tag Pills Row (matching small yellow icons & blue tags in screenshot) */}
-          <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#2a303e]">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+              <Link
+                href={`/sessions/${session.id}`}
+                className="text-base font-bold text-[#f0f2f5] hover:text-white hover:underline transition-colors line-clamp-2 leading-tight"
+                title={session.topic}
+              >
+                {session.topic}
+              </Link>
               <button
                 type="button"
-                onClick={() => onRecordResult(session)}
-                className="p-1.5 rounded-md bg-[#2b2419] border border-amber-600/40 text-amber-400 hover:bg-[#382f20] transition-colors"
-                title="Record or update score"
+                onClick={handleCopyTopic}
+                className="p-1 rounded-md text-gray-400 hover:text-white hover:bg-[#282d38] transition-colors shrink-0 cursor-pointer"
+                title="Copy topic text"
+                aria-label="Copy topic text"
               >
-                <Award className="w-3.5 h-3.5" />
+                {copiedTopic ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
               </button>
-              <button
-                type="button"
-                onClick={() => onEdit(session)}
-                className="p-1.5 rounded-md bg-[#2b2419] border border-amber-600/40 text-amber-400 hover:bg-[#382f20] transition-colors"
-                title="Edit topic and note"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1 flex-wrap justify-end">
-              {session.tags && session.tags.length > 0 ? (
-                session.tags.slice(0, 3).map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#162740] border border-[#214373] text-sky-300"
-                  >
-                    {tag}
-                  </span>
-                ))
+              {topicScore !== null && topicScore !== undefined ? (
+                <ScoreDisplay score={topicScore} size="sm" showMaxScore={false} />
               ) : (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#162740] border border-[#214373] text-sky-300">
-                  En
-                </span>
+                <span className="text-xs text-gray-500 font-mono italic">No score</span>
               )}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Card Footer (matching screenshot) */}
-      <div className="px-4 py-3 bg-[#16181c] border-t border-[#272b35] flex items-center justify-between text-[11px] text-gray-400">
-        <span className="truncate">
-          Synced: {session.practicedAt ? formatDateShort(session.practicedAt) : formatDateShort(session.createdAt)}
-        </span>
-
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => onRecordResult(session)}
-            className="text-gray-400 hover:text-white transition-colors"
-            title="Refresh score"
-          >
-            <RotateCw className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onDelete(session)}
-            className="text-gray-400 hover:text-rose-400 transition-colors"
-            title="Delete session"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-          <Link
-            href={`/sessions/${session.id}`}
-            className="inline-flex items-center gap-1 font-semibold text-gray-300 hover:text-white transition-colors ml-1"
-          >
-            <span>View Topic</span>
-            <ArrowRight className="w-3 h-3" />
-          </Link>
+        {/* Topic / Book Statuses under topic name */}
+        <div className="flex items-center gap-2">
+          <StatusButtonGroup
+            currentStatus={normalizedTopicStatus}
+            onChange={(newStatus) =>
+              onStatusChange(session, newStatus === 'To do' ? 'To Do' : newStatus)
+            }
+            ariaLabel="Status"
+            size="sm"
+          />
         </div>
+
+        {/* Next Practice / Active Conversation Section */}
+        {isLinkDone(nextLinkStatus) ? (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setIsAddingNewLink(true);
+                setIsEditChatOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#2c1d0c] hover:bg-[#3d2810] border border-[#4d3214] hover:border-[#6e461b] text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors shadow-sm cursor-pointer shrink-0"
+              title="Add ChatGPT Link"
+              aria-label="Add ChatGPT Link"
+            >
+              <Plus className="w-4 h-4 text-amber-400" />
+              <span>Add ChatGPT link</span>
+            </button>
+          </div>
+        ) : (
+          <div className="p-3.5 rounded-xl bg-[#20232b] border border-[#2e3442] space-y-2.5">
+            {/* Line 1: Link Name & Status Buttons for Next Practice Link */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span
+                className="text-xs font-bold px-2.5 py-0.5 rounded-lg bg-[#162740] text-sky-300 border border-[#214373] shrink-0 inline-flex items-center justify-center min-w-[22px]"
+                title={`ChatGPT link ${nextPracticeIndex + 1}`}
+                aria-label={`ChatGPT link ${nextPracticeIndex + 1}`}
+              >
+                <span>{nextPracticeIndex + 1}</span>
+              </span>
+              <StatusButtonGroup
+                currentStatus={nextLinkStatus}
+                onChange={(newStatus) =>
+                  handleLinkStatusChange(nextPracticeIndex, newStatus)
+                }
+                ariaLabel="Change next practice link status"
+                size="sm"
+              />
+            </div>
+
+            {/* Line 2: Score Button, Prompt chat link pill & ChatGPT Link Button */}
+            <div className="flex items-center justify-start gap-1.5 flex-wrap">
+              {/* Score Button for Next Practice Link */}
+              {nextPracticeLink?.bestScore !== null &&
+              nextPracticeLink?.bestScore !== undefined ? (
+                <button
+                  type="button"
+                  onClick={() => setIsAddScoreOpen(true)}
+                  className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-[#162740] hover:bg-[#1e3658] border border-[#234b7f] text-xs font-semibold text-sky-300 hover:text-white transition-colors shadow-sm shrink-0 cursor-pointer font-mono"
+                  title="Edit score"
+                  aria-label="Edit score"
+                >
+                  <span>{nextPracticeLink.bestScore.toFixed(1)}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsAddScoreOpen(true)}
+                  className="p-1.5 rounded-lg bg-[#272c37] hover:bg-[#343b4a] border border-[#3b4354] text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors shadow-sm shrink-0 cursor-pointer flex items-center justify-center"
+                  title="Add score"
+                  aria-label="Add score"
+                >
+                  <Plus className="w-3.5 h-3.5 text-amber-400" />
+                </button>
+              )}
+
+              {/* Link Prompt Chat */}
+              {promptChatUrl && promptChatUrl.trim().length > 0 ? (
+                <a
+                  href={promptChatUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={handlePromptClick}
+                  className="p-1.5 rounded-lg bg-[#132c1e] hover:bg-[#1a3827] text-emerald-400 border border-[#1e5233] transition-colors flex items-center justify-center cursor-pointer shadow-sm shrink-0"
+                  title="Open Prompt Chat"
+                  aria-label="Open Prompt Chat"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handlePromptClick}
+                  className="p-1.5 rounded-lg bg-[#272a33] hover:bg-[#343846] text-gray-400 hover:text-gray-200 border border-[#3b4150] transition-colors flex items-center justify-center cursor-pointer shadow-sm shrink-0"
+                  title="Prompt link is empty (click to copy prompt)"
+                  aria-label="Prompt link is empty"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* ChatGPT Link Pill (Green if set, Amber if not) */}
+              <div
+                className={`flex items-center rounded-lg p-0.5 shadow-sm border ${
+                  nextPracticeLink?.url &&
+                  nextPracticeLink.url.trim().length > 0 &&
+                  nextPracticeLink.url !== 'https://chatgpt.com'
+                    ? 'bg-[#132c1e] border-[#1e5233] text-emerald-400'
+                    : 'bg-[#2c1d0c] border-[#4d3214] text-amber-400'
+                }`}
+              >
+                {nextPracticeLink?.url && nextPracticeLink.url.trim().length > 0 ? (
+                  <a
+                    href={nextPracticeLink.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={handleOpenChatGPT}
+                    title={`Open ChatGPT: ${nextPracticeLink.url}`}
+                    className="p-1.5 rounded transition-colors flex items-center justify-center hover:text-emerald-300 hover:bg-[#1a3827]"
+                  >
+                    <MessageSquareCheck className="w-3.5 h-3.5" />
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingNewLink(false);
+                      setIsEditChatOpen(true);
+                    }}
+                    title="Add ChatGPT Link"
+                    className="p-1.5 rounded transition-colors flex items-center justify-center hover:text-amber-300 hover:bg-[#382610] cursor-pointer"
+                  >
+                    <MessageSquarePlus className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingNewLink(false);
+                    setIsEditChatOpen(true);
+                  }}
+                  title={nextPracticeLink?.url ? 'Edit ChatGPT Link' : 'Add ChatGPT Link'}
+                  className={`p-1.5 rounded transition-colors cursor-pointer border-l ${
+                    nextPracticeLink?.url &&
+                    nextPracticeLink.url.trim().length > 0 &&
+                    nextPracticeLink.url !== 'https://chatgpt.com'
+                      ? 'border-[#1e5233] hover:text-emerald-300 hover:bg-[#1a3827]'
+                      : 'border-[#4d3214] hover:text-amber-300 hover:bg-[#382610]'
+                  }`}
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Edit Session ChatGPT Link Modal */}
+      <EditSessionChatModal
+        isOpen={isEditChatOpen}
+        onClose={() => {
+          setIsEditChatOpen(false);
+          setIsAddingNewLink(false);
+        }}
+        session={session}
+        practiceIndex={isAddingNewLink ? baseLinks.length : nextPracticeIndex}
+        initialUrl={isAddingNewLink ? '' : nextPracticeLink?.url}
+        onSave={() => {
+          handleDataRefresh();
+        }}
+      />
+
+      {/* Add / Update Score Modal */}
+      <AddScoreModal
+        isOpen={isAddScoreOpen}
+        onClose={() => setIsAddScoreOpen(false)}
+        session={session}
+        practiceIndex={nextPracticeIndex}
+        selectedUrl={nextPracticeLink?.url}
+        onSuccess={handleDataRefresh}
+      />
     </div>
   );
 }

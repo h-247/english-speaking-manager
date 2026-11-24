@@ -17,7 +17,7 @@ import {
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/topics', label: 'Topics', icon: Layers },
-  { href: '/coach-prompt', label: 'Coach Prompt', icon: MessageSquareQuote },
+  { href: '/prompt-links', label: 'Prompt Links', icon: Settings },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 

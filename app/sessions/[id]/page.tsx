@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, use } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { ScoreDisplay } from '@/components/ui/ScoreDisplay';
 import { SessionFormDialog } from '@/components/sessions/SessionFormDialog';
-import { RecordResultDialog } from '@/components/sessions/RecordResultDialog';
-import { EditAttemptDialog } from '@/components/sessions/EditAttemptDialog';
+import { EditSessionChatModal } from '@/components/sessions/EditSessionChatModal';
+import { AddScoreModal } from '@/components/sessions/AddScoreModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Dialog } from '@/components/ui/Dialog';
 import { Input } from '@/components/ui/Input';
@@ -16,11 +16,10 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import {
   fetchSession,
   deleteSession,
-  deleteAttempt,
   addTopicLink,
+  removeTopicLink,
   updateSession,
   SessionItem,
-  PracticeAttemptItem,
 } from '@/lib/api-client';
 import { validateChatGPTUrl } from '@/lib/chatgpt-url';
 import { formatDate } from '@/lib/format-date';
@@ -39,23 +38,32 @@ import {
   Clock,
   Sparkles,
   Link as LinkIcon,
+  Link2,
   MessageSquare,
+  MessageSquareCheck,
+  MessageSquarePlus,
+  Pencil,
+  Trophy,
   History,
   Plus,
   TrendingUp,
   TrendingDown,
   Minus,
   Play,
+  Check,
 } from 'lucide-react';
 
 export default function SessionDetailsPage({
   params,
 }: {
-  params: Promise<{ id: string }> | { id: string };
+  params?: Promise<{ id: string }> | { id: string };
 }) {
-  const unwrappedParams = use(params as Promise<{ id: string }>);
-  const id = unwrappedParams.id;
   const router = useRouter();
+  const routeParams = useParams() as { id?: string } | null;
+  const id =
+    routeParams?.id ||
+    (params && 'id' in (params as any) ? (params as any).id : undefined) ||
+    '';
   const { showSuccess, showError } = useToast();
 
   const [session, setSession] = useState<SessionItem | null>(null);
@@ -63,23 +71,73 @@ export default function SessionDetailsPage({
 
   // Dialog states
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [isResultOpen, setIsResultOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Attempt deletion states
-  const [attemptToDelete, setAttemptToDelete] = useState<string | null>(null);
-  const [isDeletingAttempt, setIsDeletingAttempt] = useState(false);
-
-  // Attempt editing states
-  const [attemptToEdit, setAttemptToEdit] = useState<PracticeAttemptItem | null>(null);
+  // Link deletion states
+  const [linkToDelete, setLinkToDelete] = useState<{ url: string; index: number } | null>(null);
+  const [isDeletingLink, setIsDeletingLink] = useState(false);
 
   // Topic link management states
   const [selectedUrlForAttempt, setSelectedUrlForAttempt] = useState<string | undefined>(undefined);
+  const [selectedPracticeIndex, setSelectedPracticeIndex] = useState<number | undefined>(undefined);
+  const [selectedInitialUrl, setSelectedInitialUrl] = useState<string | undefined>(undefined);
+  const [isAddScoreOpen, setIsAddScoreOpen] = useState(false);
+  const [isEditChatModalOpen, setIsEditChatModalOpen] = useState(false);
   const [isAddLinkOpen, setIsAddLinkOpen] = useState(false);
   const [newLinkInput, setNewLinkInput] = useState('');
   const [addLinkError, setAddLinkError] = useState('');
   const [isAddingLink, setIsAddingLink] = useState(false);
+  const [promptChatUrl, setPromptChatUrl] = useState<string>('https://chatgpt.com');
+  const [copiedTopic, setCopiedTopic] = useState(false);
+
+  const handleCopyTopic = async () => {
+    if (!session) return;
+    let copied = false;
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(session.topic);
+        copied = true;
+      }
+    } catch {
+      // clipboard API failed, fall through to execCommand
+    }
+
+    if (!copied) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = session.topic;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } catch {}
+    }
+
+    setCopiedTopic(true);
+    showSuccess(`Copied "${session.topic}" to clipboard!`);
+    setTimeout(() => setCopiedTopic(false), 2000);
+  };
+
+  useEffect(() => {
+    const updateUrl = () => {
+      try {
+        const cached = localStorage.getItem('prompt_chat_url') || localStorage.getItem('shared_prompt_url');
+        if (cached) setPromptChatUrl(cached);
+      } catch {}
+    };
+    updateUrl();
+    window.addEventListener('storage', updateUrl);
+    window.addEventListener('prompt_chat_url_changed', updateUrl);
+    return () => {
+      window.removeEventListener('storage', updateUrl);
+      window.removeEventListener('prompt_chat_url_changed', updateUrl);
+    };
+  }, []);
 
   const loadSession = useCallback(async () => {
     setIsLoading(true);
@@ -108,35 +166,35 @@ export default function SessionDetailsPage({
     }
   };
 
-  const handleCopyPrompt = async () => {
-    if (!session) return;
+  const handlePromptClick = async (e: React.MouseEvent) => {
     try {
-      const promptText = `Topic: ${session.topic}\n\n${ORIGINAL_COACH_PROMPT}`;
+      let promptText = ORIGINAL_COACH_PROMPT;
+      if (typeof window !== 'undefined') {
+        const customPrompt = localStorage.getItem('shared_prompt_text');
+        if (customPrompt) promptText = customPrompt;
+      }
       await navigator.clipboard.writeText(promptText);
-      showSuccess(`Coach prompt copied for "${session.topic}".`);
+      showSuccess('Opening Prompt Chat & prompt copied to clipboard.');
     } catch {
-      showError('Failed to copy coach prompt.');
+      // navigation continues
     }
   };
 
-  const handleLinkStatusChange = async (targetUrl: string, newStatus: string) => {
+  const handleLinkStatusChange = async (targetIndex: number, newStatus: string) => {
     if (!session) return;
     try {
-      if (targetUrl === session.chatgptUrl) {
-        await updateSession(session.id, { status: newStatus as any });
+      if (targetIndex === 0) {
+        await updateSession(session.id, { chatgptUrlStatus: newStatus as any });
       } else {
-        const currentBranches = session.branchUrls || [];
-        const updatedBranches = currentBranches.map((b: any) => {
-          const u = typeof b === 'string' ? b : b.url;
-          if (u === targetUrl) {
-            return { url: u, status: newStatus };
-          }
-          return typeof b === 'string' ? { url: b } : b;
-        });
-        if (!updatedBranches.some((b: any) => (typeof b === 'string' ? b : b.url) === targetUrl)) {
-          updatedBranches.push({ url: targetUrl, status: newStatus });
+        const branchIndex = targetIndex - 1;
+        const currentBranches = [...(session.branchUrls || [])];
+        while (currentBranches.length <= branchIndex) {
+          currentBranches.push({ url: '', status: 'To Do' });
         }
-        await updateSession(session.id, { branchUrls: updatedBranches as any });
+        const existingB = currentBranches[branchIndex];
+        const u = typeof existingB === 'string' ? existingB : (existingB?.url || '');
+        currentBranches[branchIndex] = { url: u, status: newStatus };
+        await updateSession(session.id, { branchUrls: currentBranches as any });
       }
       showSuccess(`Updated link status to "${newStatus}".`);
       await loadSession();
@@ -158,18 +216,27 @@ export default function SessionDetailsPage({
     }
   };
 
-  const handleConfirmDeleteAttempt = async () => {
-    if (!session || !attemptToDelete) return;
-    setIsDeletingAttempt(true);
+  const handleConfirmDeleteLink = async () => {
+    if (!session || !linkToDelete) return;
+    setIsDeletingLink(true);
     try {
-      await deleteAttempt(session.id, attemptToDelete);
-      showSuccess('Practice attempt deleted.');
-      setAttemptToDelete(null);
+      if (linkToDelete.url && linkToDelete.url.trim().length > 0) {
+        await removeTopicLink(session.id, linkToDelete.url);
+      } else if (linkToDelete.index > 0) {
+        const branchIdx = linkToDelete.index - 1;
+        const currentBranches = [...(session.branchUrls || [])];
+        if (branchIdx < currentBranches.length) {
+          currentBranches.splice(branchIdx, 1);
+          await updateSession(session.id, { branchUrls: currentBranches as any });
+        }
+      }
+      showSuccess('ChatGPT conversation link removed.');
+      setLinkToDelete(null);
       await loadSession();
     } catch (err: any) {
-      showError(err.message || 'Failed to delete practice attempt.');
+      showError(err.message || 'Failed to delete ChatGPT link.');
     } finally {
-      setIsDeletingAttempt(false);
+      setIsDeletingLink(false);
     }
   };
 
@@ -248,31 +315,40 @@ export default function SessionDetailsPage({
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="space-y-2 flex-1">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <StatusBadge status={session.status} size="md" />
               {session.score !== null && <ScoreDisplay score={session.score} size="md" />}
-              {attempts.length > 0 && (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#1c2e42] text-sky-300 border border-sky-800/50 font-medium">
-                  {attempts.length} {attempts.length === 1 ? 'practice attempt' : 'practice attempts'}
-                </span>
-              )}
-              {session.allChatgptUrls && session.allChatgptUrls.length > 1 && (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-950/70 text-blue-300 border border-blue-800/50 font-medium inline-flex items-center gap-1">
-                  <LinkIcon className="w-3 h-3 text-blue-400" />
-                  {session.allChatgptUrls.length} ChatGPT links
-                </span>
-              )}
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#ececec] tracking-tight">
-              {session.topic}
-            </h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#ececec] tracking-tight">
+                {session.topic}
+              </h1>
+              <button
+                type="button"
+                onClick={handleCopyTopic}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-[#333333] transition-colors cursor-pointer"
+                title="Copy topic text"
+                aria-label="Copy topic text"
+              >
+                {copiedTopic ? (
+                  <Check className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Primary Action Button */}
           <div className="flex items-center gap-2">
             <a
-              href={activeChatgptUrl}
+              href={activeChatgptUrl || 'https://chatgpt.com'}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => {
+                const currentStatus = (session as any).chatgptUrlStatus || 'To Do';
+                if (currentStatus !== 'Doing' && currentStatus !== 'IN_PROGRESS') {
+                  handleLinkStatusChange(0, 'Doing');
+                }
+              }}
               className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-md select-none ${
                 isUnfinished
                   ? 'bg-white text-black hover:bg-gray-200 ring-2 ring-white/20'
@@ -321,7 +397,7 @@ export default function SessionDetailsPage({
               ? session.groupedLinks
               : [{
                   url: session.chatgptUrl,
-                  status: session.status,
+                  status: (session as any).chatgptUrlStatus || 'To Do',
                   attemptNumbers: attempts.map((_, i) => attempts.length - i),
                   attemptCount: attempts.length,
                   bestScore: session.score,
@@ -336,43 +412,25 @@ export default function SessionDetailsPage({
 
               return (
                 <div
-                  key={link.url}
+                  key={link.url || idx}
                   className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3.5 rounded-xl bg-[#20232b] border border-[#2e3442] hover:border-[#3d4557] transition-all"
                 >
                   <div className="flex flex-col gap-1.5 min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#162740] text-sky-300 border border-[#214373] shrink-0 inline-flex items-center gap-1">
-                        <LinkIcon className="w-3 h-3 text-sky-400" />
+                      <span className="text-xs font-bold px-2.5 py-1 rounded bg-[#162740] text-sky-300 border border-[#214373] shrink-0 inline-flex items-center gap-1.5">
+                        <LinkIcon className="w-3.5 h-3.5 text-sky-400" />
                         Link #{idx + 1}
                       </span>
-
-                      <StatusBadge status={linkStatus} size="sm" />
-
-                      {link.bestScore !== null && (
-                        <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/50">
-                          Score: {link.bestScore.toFixed(1)}/10
-                        </span>
-                      )}
-
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs sm:text-sm text-gray-200 hover:text-white hover:underline truncate max-w-sm sm:max-w-md block"
-                        title={link.url}
-                      >
-                        {link.url}
-                      </a>
                     </div>
 
                     <div className="flex items-center gap-3 text-[11px] text-gray-400">
                       <span>
                         {link.attemptCount > 0 ? (
                           <>
-                            Used in <b>{link.attemptCount} {link.attemptCount === 1 ? 'attempt' : 'attempts'}</b> (Attempt #{link.attemptNumbers.join(', #')})
+                            Used in <b>{link.attemptCount} {link.attemptCount === 1 ? 'attempt' : 'attempts'}</b>
                           </>
                         ) : (
-                          <span className="text-gray-500 italic">No attempts logged with this link yet</span>
+                          <span className="text-gray-500 italic">No practice logged yet</span>
                         )}
                       </span>
                       {link.latestPracticedAt && (
@@ -383,12 +441,12 @@ export default function SessionDetailsPage({
                     </div>
                   </div>
 
-                  {/* Actions Bar matching screenshot */}
+                  {/* Actions Bar: Status & Practice, then ChatGPT, Prompt, and Delete at outermost right */}
                   <div className="flex items-center gap-2 shrink-0 flex-wrap self-end lg:self-auto pt-2 lg:pt-0 border-t border-[#2a303e] lg:border-t-0 w-full lg:w-auto justify-end">
                     {/* Status Dropdown */}
                     <select
                       value={linkStatus}
-                      onChange={(e) => handleLinkStatusChange(link.url, e.target.value)}
+                      onChange={(e) => handleLinkStatusChange(idx, e.target.value)}
                       className="bg-[#191b22] hover:bg-[#232732] border border-[#394050] text-xs font-semibold rounded-lg px-2 py-1 text-gray-200 cursor-pointer outline-none transition-colors"
                       title="Change link status"
                     >
@@ -397,88 +455,120 @@ export default function SessionDetailsPage({
                       <option value="Done" className="bg-[#1e2025] text-emerald-300">Done</option>
                     </select>
 
-                    {/* ChatGPT ↗ Button */}
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#272c37] hover:bg-[#343b4a] border border-[#3b4354] text-xs font-semibold text-gray-200 hover:text-white transition-colors"
-                      title="Open conversation in ChatGPT"
+                    {/* Score Button for link */}
+                    {link.bestScore !== null && link.bestScore !== undefined ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedUrlForAttempt(link.url);
+                          setSelectedPracticeIndex(idx);
+                          setIsAddScoreOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#162740] hover:bg-[#1e3658] border border-[#234b7f] text-xs font-semibold text-sky-300 hover:text-white transition-colors shadow-sm cursor-pointer"
+                        title="Edit score"
+                      >
+                        <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{link.bestScore.toFixed(1)}/10</span>
+                        <Pencil className="w-2.5 h-2.5 text-sky-400 ml-0.5 opacity-70" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedUrlForAttempt(link.url);
+                          setSelectedPracticeIndex(idx);
+                          setIsAddScoreOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#272c37] hover:bg-[#343b4a] border border-[#3b4354] text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors shadow-sm cursor-pointer"
+                        title="Add score"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Add score</span>
+                      </button>
+                    )}
+
+                    {/* ChatGPT Link Pill (Green if set, Amber if not) */}
+                    <div
+                      className={`flex items-center rounded-lg p-0.5 shadow-sm border ${
+                        link.url && link.url.trim().length > 0 && link.url !== 'https://chatgpt.com'
+                          ? 'bg-[#132c1e] border-[#1e5233] text-emerald-400'
+                          : 'bg-[#2c1d0c] border-[#4d3214] text-amber-400'
+                      }`}
                     >
-                      <span>ChatGPT</span>
-                      <ExternalLink className="w-3 h-3 text-gray-400" />
+                      {link.url && link.url.trim().length > 0 ? (
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={() => {
+                            if (linkStatus !== 'Doing' && linkStatus !== 'IN_PROGRESS') {
+                              handleLinkStatusChange(idx, 'Doing');
+                            }
+                          }}
+                          title={`Open ChatGPT: ${link.url}`}
+                          className="p-1 rounded transition-colors flex items-center justify-center hover:text-emerald-300 hover:bg-[#1a3827]"
+                        >
+                          <MessageSquareCheck className="w-3.5 h-3.5" />
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPracticeIndex(idx);
+                            setSelectedInitialUrl(link.url);
+                            setIsEditChatModalOpen(true);
+                          }}
+                          title="Add ChatGPT Link"
+                          className="p-1 rounded transition-colors flex items-center justify-center hover:text-amber-300 hover:bg-[#382610] cursor-pointer"
+                        >
+                          <MessageSquarePlus className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPracticeIndex(idx);
+                          setSelectedInitialUrl(link.url);
+                          setIsEditChatModalOpen(true);
+                        }}
+                        title={link.url ? 'Edit ChatGPT Link' : 'Add ChatGPT Link'}
+                        className={`p-1 rounded transition-colors cursor-pointer border-l ${
+                          link.url && link.url.trim().length > 0 && link.url !== 'https://chatgpt.com'
+                            ? 'border-[#1e5233] hover:text-emerald-300 hover:bg-[#1a3827]'
+                            : 'border-[#4d3214] hover:text-amber-300 hover:bg-[#382610]'
+                        }`}
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Link Prompt Chat (matching https://github.com/h-247/english-grammar-quiz) */}
+                    <a
+                      href={promptChatUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={handlePromptClick}
+                      className="p-1 rounded-lg bg-[#132c1e] hover:bg-[#1a3827] text-emerald-400 border border-[#1e5233] transition-colors flex items-center justify-center cursor-pointer shadow-sm shrink-0"
+                      title="Open Prompt Chat"
+                      aria-label="Open Prompt Chat"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
                     </a>
 
-                    {/* Prompt 📋 Button */}
+                    {/* Delete ChatGPT Link Feature */}
                     <button
                       type="button"
-                      onClick={handleCopyPrompt}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#272c37] hover:bg-[#343b4a] border border-[#3b4354] text-xs font-semibold text-gray-200 hover:text-white transition-colors"
-                      title="Copy coach prompt for this topic"
+                      onClick={() => setLinkToDelete({ url: link.url, index: idx })}
+                      className="p-1 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors cursor-pointer border border-[#394050]/60 hover:border-rose-800/60"
+                      title="Delete ChatGPT link"
+                      aria-label="Delete ChatGPT link"
                     >
-                      <span>Prompt</span>
-                      <Copy className="w-3 h-3 text-amber-400" />
-                    </button>
-
-                    {/* ▷ Practice Button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedUrlForAttempt(link.url);
-                        setIsResultOpen(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white hover:bg-gray-200 text-black text-xs font-bold shadow-md transition-all active:scale-95"
-                      title="Log score for this link"
-                    >
-                      <Play className="w-3 h-3 fill-black text-black" />
-                      <span>Practice</span>
-                    </button>
-
-                    {/* Teal Copy Link Pill Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleCopyLink(link.url)}
-                      className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#0d2e2b] border border-[#147a6c] text-[#1fd5be] hover:bg-[#12423e] hover:text-[#38efd7] shadow-sm transition-colors"
-                      title="Copy link"
-                      aria-label="Copy link"
-                    >
-                      <LinkIcon className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
               );
             })}
-          </div>
-        </div>
-
-        {/* Latest Practice Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-[#333333]">
-          <div className="p-3.5 rounded-lg bg-[#1e1e1e] border border-[#333333]">
-            <span className="text-xs text-gray-400 block font-medium">Latest Score</span>
-            <div className="mt-1">
-              <ScoreDisplay score={session.score} size="lg" />
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-lg bg-[#1e1e1e] border border-[#333333]">
-            <span className="text-xs text-gray-400 block font-medium">Latest Pass Count</span>
-            <span className="text-xl font-bold font-mono text-emerald-400 mt-1 block">
-              {session.passCount !== null ? session.passCount : '—'}
-            </span>
-          </div>
-
-          <div className="p-3.5 rounded-lg bg-[#1e1e1e] border border-[#333333]">
-            <span className="text-xs text-gray-400 block font-medium">Latest Fail Count</span>
-            <span className="text-xl font-bold font-mono text-rose-400 mt-1 block">
-              {session.failCount !== null ? session.failCount : '—'}
-            </span>
-          </div>
-
-          <div className="p-3.5 rounded-lg bg-[#1e1e1e] border border-[#333333]">
-            <span className="text-xs text-gray-400 block font-medium">Latest Accuracy</span>
-            <span className="text-xl font-bold font-mono text-gray-200 mt-1 block">
-              {session.score !== null ? `${(session.score * 10).toFixed(0)}%` : '—'}
-            </span>
           </div>
         </div>
 
@@ -535,15 +625,6 @@ export default function SessionDetailsPage({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsResultOpen(true)}
-              className="text-amber-400 border-amber-900/60 hover:bg-amber-950/20"
-            >
-              <Award className="w-3.5 h-3.5 mr-1" />
-              Record Results
-            </Button>
             <Button variant="outline" size="sm" onClick={() => setIsEditOpen(true)}>
               <Edit2 className="w-3.5 h-3.5 mr-1" />
               Edit
@@ -560,248 +641,11 @@ export default function SessionDetailsPage({
         </div>
       </div>
 
-      {/* Practice History & Score Progression Section */}
-      <div className="bg-[#262626] border border-[#383838] rounded-xl p-6 sm:p-8 shadow-md flex flex-col gap-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-sky-950/40 text-sky-400 border border-sky-800/40">
-              <History className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-bold text-[#ececec]">
-                  Practice History & Scores
-                </h2>
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#1c2e42] text-sky-300 border border-sky-800/50 font-medium">
-                  {attempts.length} {attempts.length === 1 ? 'attempt' : 'attempts'}
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Chronological log of speaking attempts and scores for this ChatGPT link
-              </p>
-            </div>
-          </div>
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setIsResultOpen(true)}
-            className="shrink-0"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            Log Practice Attempt
-          </Button>
-        </div>
-
-        {/* Score Progression Overview Card (if > 1 attempt) */}
-        {attempts.length > 1 && scoreDiff !== null && firstAttempt && latestAttempt && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-[#1e1e1e] border border-[#383838]">
-            <div>
-              <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
-                Initial Score
-              </span>
-              <div className="mt-1">
-                <ScoreDisplay score={firstAttempt.score} size="md" />
-              </div>
-            </div>
-
-            <div>
-              <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
-                Latest Score
-              </span>
-              <div className="mt-1">
-                <ScoreDisplay score={latestAttempt.score} size="md" />
-              </div>
-            </div>
-
-            <div>
-              <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
-                Best Score
-              </span>
-              <div className="mt-1">
-                <ScoreDisplay score={bestScore} size="md" />
-              </div>
-            </div>
-
-            <div>
-              <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
-                Progression
-              </span>
-              <div className="mt-1 flex items-center gap-1.5">
-                {scoreDiff > 0 ? (
-                  <span className="inline-flex items-center gap-1 text-sm font-bold text-emerald-400">
-                    <TrendingUp className="w-4 h-4" />
-                    +{scoreDiff.toFixed(1)}
-                  </span>
-                ) : scoreDiff < 0 ? (
-                  <span className="inline-flex items-center gap-1 text-sm font-bold text-rose-400">
-                    <TrendingDown className="w-4 h-4" />
-                    {scoreDiff.toFixed(1)}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-sm font-bold text-gray-400">
-                    <Minus className="w-4 h-4" />
-                    0.0
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Attempts List */}
-        {attempts.length > 0 ? (
-          <div className="space-y-3">
-            {attempts.map((attempt, index) => {
-              const attemptNumber = attempts.length - index;
-              const isLatest = index === 0 && attempts.length > 1;
-              const totalAttemptsForSentences = attempt.passCount + attempt.failCount;
-              const accuracy =
-                totalAttemptsForSentences > 0
-                  ? Math.round((attempt.passCount / totalAttemptsForSentences) * 100)
-                  : 0;
-
-              return (
-                <div
-                  key={attempt.id}
-                  className="p-4 sm:p-5 rounded-xl bg-[#1c1c1c] border border-[#333333] hover:border-[#444444] transition-all flex flex-col gap-3"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-[#2b2b2b] text-gray-200 border border-[#3d3d3d]">
-                        Attempt #{attemptNumber}
-                      </span>
-                      {isLatest && (
-                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-800/40">
-                          Latest Attempt
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-400 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-gray-500" />
-                        {formatDate(attempt.practicedAt)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <ScoreDisplay score={attempt.score} size="md" />
-                      <button
-                        onClick={() => setAttemptToEdit(attempt)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-neutral-800 transition-colors"
-                        title="Edit practice attempt and ChatGPT link"
-                        aria-label="Edit practice attempt and ChatGPT link"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setAttemptToDelete(attempt.id)}
-                        className="p-1.5 rounded-lg text-gray-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
-                        title="Delete this practice attempt"
-                        aria-label="Delete this practice attempt"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 py-2 px-3 rounded-lg bg-[#161616] border border-[#2b2b2b] text-xs">
-                    <div>
-                      <span className="text-gray-400 block text-[11px]">Pass Count</span>
-                      <span className="font-mono font-bold text-emerald-400">
-                        {attempt.passCount}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 block text-[11px]">Fail Count</span>
-                      <span className="font-mono font-bold text-rose-400">
-                        {attempt.failCount}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 block text-[11px]">Accuracy</span>
-                      <span className="font-mono font-bold text-gray-200">{accuracy}%</span>
-                    </div>
-                  </div>
-
-                  {/* Attempt's ChatGPT Link */}
-                  {attempt.chatgptUrl && (
-                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-[#141414] border border-[#2b2b2b] text-xs">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#262626] text-blue-300 border border-[#383838] shrink-0">
-                          <LinkIcon className="w-3 h-3 text-blue-400" />
-                          ChatGPT Link
-                        </span>
-                        <a
-                          href={attempt.chatgptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-gray-300 hover:text-white truncate hover:underline"
-                          title={attempt.chatgptUrl}
-                        >
-                          {attempt.chatgptUrl}
-                        </a>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <a
-                          href={attempt.chatgptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#242424] hover:bg-[#333] text-gray-200 text-[11px] font-medium transition-colors"
-                        >
-                          <span>Open</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                        <button
-                          onClick={() => handleCopyLink(attempt.chatgptUrl!)}
-                          className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#2b2b2b] transition-colors"
-                          title="Copy conversation link"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {attempt.notes && (
-                    <div className="text-xs text-gray-300 bg-[#171717] p-3 rounded-lg border border-[#2b2b2b] whitespace-pre-wrap">
-                      <span className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">
-                        Attempt Feedback / Notes:
-                      </span>
-                      {attempt.notes}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-8 px-4 rounded-xl border border-dashed border-[#383838] bg-[#1a1a1a]/60 space-y-3">
-            <p className="text-sm text-gray-400">
-              No practice attempts recorded yet for this ChatGPT conversation.
-            </p>
-            <Button variant="outline" size="sm" onClick={() => setIsResultOpen(true)}>
-              <Plus className="w-4 h-4 mr-1.5" />
-              Record First Practice Attempt
-            </Button>
-          </div>
-        )}
-      </div>
-
       {/* Dialogs */}
       <SessionFormDialog
         isOpen={isEditOpen}
         sessionToEdit={session}
         onClose={() => setIsEditOpen(false)}
-        onSuccess={loadSession}
-      />
-
-      <RecordResultDialog
-        isOpen={isResultOpen}
-        session={session}
-        initialUrl={selectedUrlForAttempt}
-        onClose={() => {
-          setIsResultOpen(false);
-          setSelectedUrlForAttempt(undefined);
-        }}
         onSuccess={loadSession}
       />
 
@@ -856,29 +700,38 @@ export default function SessionDetailsPage({
         onConfirm={handleConfirmDelete}
         isLoading={isDeleting}
         title="Delete Session Record"
-        message={`Are you sure you want to delete "${session.topic}"? This removes the session and all practice attempt history from your manager. (Your ChatGPT conversation will not be affected).`}
+        message={`Are you sure you want to delete "${session.topic}"? This removes the session from your manager. (Your ChatGPT conversation will not be affected).`}
         confirmLabel="Delete Session"
       />
 
-      {/* Delete Single Attempt Dialog */}
+      {/* Delete Single ChatGPT Link Dialog */}
       <ConfirmDialog
-        isOpen={attemptToDelete !== null}
-        onClose={() => setAttemptToDelete(null)}
-        onConfirm={handleConfirmDeleteAttempt}
-        isLoading={isDeletingAttempt}
-        title="Delete Practice Attempt"
-        message="Are you sure you want to delete this practice attempt? The session's latest score and stats will automatically adjust to the remaining attempts."
-        confirmLabel="Delete Attempt"
+        isOpen={linkToDelete !== null}
+        onClose={() => setLinkToDelete(null)}
+        onConfirm={handleConfirmDeleteLink}
+        isLoading={isDeletingLink}
+        title="Delete ChatGPT Link"
+        message={`Are you sure you want to delete this ChatGPT link (${linkToDelete?.url || `Link #${(linkToDelete?.index ?? 0) + 1}`})? All practice attempts associated with this link will also be deleted.`}
+        confirmLabel="Delete Link"
       />
 
-      {/* Edit Attempt Dialog */}
-      <EditAttemptDialog
-        isOpen={Boolean(attemptToEdit)}
-        onClose={() => setAttemptToEdit(null)}
-        sessionId={session.id}
-        attempt={attemptToEdit}
-        topicName={session.topic}
-        availableUrls={session.allChatgptUrls || [session.chatgptUrl]}
+      {/* Edit ChatGPT Link Modal */}
+      <EditSessionChatModal
+        isOpen={isEditChatModalOpen}
+        onClose={() => setIsEditChatModalOpen(false)}
+        session={session}
+        practiceIndex={selectedPracticeIndex}
+        initialUrl={selectedInitialUrl}
+        onSave={() => loadSession()}
+      />
+
+      {/* Add / Update Score Modal */}
+      <AddScoreModal
+        isOpen={isAddScoreOpen}
+        onClose={() => setIsAddScoreOpen(false)}
+        session={session}
+        practiceIndex={selectedPracticeIndex}
+        selectedUrl={selectedUrlForAttempt}
         onSuccess={loadSession}
       />
     </div>

@@ -30,6 +30,16 @@ export default function RootLayout({
                   window.location.reload();
                 }
               });
+              window.addEventListener('unhandledrejection', function(event) {
+                if (!event.reason) return;
+                var msg = event.reason.message || String(event.reason);
+                if (msg.indexOf("Cannot read properties of undefined (reading 'send')") !== -1 ||
+                    msg.indexOf("send was called before connect") !== -1 ||
+                    msg.indexOf("transport was disconnected") !== -1) {
+                  event.preventDefault();
+                  event.stopImmediatePropagation();
+                }
+              });
             `,
           }}
         />
